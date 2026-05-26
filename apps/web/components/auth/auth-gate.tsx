@@ -8,8 +8,10 @@ import { Input } from "@/components/ui/input";
 import { API_BASE } from "@/app/lib/api";
 import { clearStoredAuthSession, getStoredAuthSession, setStoredAuthSession } from "@/app/lib/auth";
 
+type AuthState = "checking" | "authenticated" | "unauthenticated";
+
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = useState(false);
+  const [authState, setAuthState] = useState<AuthState>("checking");
   const [inviteCode, setInviteCode] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,7 +20,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const session = getStoredAuthSession();
     if (!session) {
-      setReady(true);
+      setAuthState("unauthenticated");
       return;
     }
 
@@ -33,10 +35,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           token: session.token,
           displayName: user.display_name || session.displayName || "Guest",
         });
-        setReady(true);
+        setAuthState("authenticated");
       } catch {
         clearStoredAuthSession();
-        setReady(true);
+        setAuthState("unauthenticated");
       }
     })();
   }, []);
@@ -66,7 +68,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         token: data.token,
         displayName: data.user.display_name || displayName || "Guest",
       });
-      setReady(true);
+      setAuthState("authenticated");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -74,7 +76,19 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }
 
-  if (!ready) {
+  if (authState === "checking") {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[linear-gradient(180deg,#fbfaf6_0%,#f4f1e8_100%)] px-4">
+        <Card className="w-full max-w-md border-[#e3dfd2] bg-white/90 shadow-lg backdrop-blur">
+          <CardContent className="p-6 text-center text-sm text-[#6b665e]">
+            Checking your session...
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (authState === "unauthenticated") {
     return (
       <div className="flex h-screen items-center justify-center bg-[linear-gradient(180deg,#fbfaf6_0%,#f4f1e8_100%)] px-4">
         <Card className="w-full max-w-md border-[#e3dfd2] bg-white/90 shadow-lg backdrop-blur">
