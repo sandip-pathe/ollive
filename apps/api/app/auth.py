@@ -122,9 +122,15 @@ async def _load_user_by_id(user_id: UUID) -> AuthUser | None:
 
 async def require_current_user(request: Request) -> AuthUser:
     auth_header = request.headers.get("authorization", "")
-    if not auth_header.lower().startswith("bearer "):
+    token = ""
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        token = request.query_params.get("token", "").strip()
+    if not token:
+        token = request.query_params.get("access_token", "").strip()
+    if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-    token = auth_header.split(" ", 1)[1].strip()
     user_id = _verify_session_token(token)
     user = await _load_user_by_id(user_id)
     if not user:

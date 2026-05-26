@@ -11,6 +11,7 @@ import {
   type ConversationSummary,
   type Message as ApiMessage,
 } from "@/app/lib/api";
+import { getStoredAuthToken } from "@/app/lib/auth";
 
 function buildConversationTitle(prompt: string) {
   const trimmed = prompt.replace(/\s+/g, " ").trim();
@@ -208,11 +209,15 @@ export function ChatLayout({
     setStreaming(true);
 
     try {
+      const authToken = getStoredAuthToken();
       const response = await fetch(
         `${API_BASE}/api/conversations/${convId}/messages/stream`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
           body: JSON.stringify({ role: "user", content: value }),
           signal: controller.signal,
         },

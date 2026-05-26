@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { API_BASE, apiFetch } from "@/app/lib/api";
+import { getStoredAuthToken } from "@/app/lib/auth";
 import type {
   MetricsOverview,
   Trace as ApiTrace,
@@ -219,8 +220,9 @@ export function InspectPanel({
 
   useEffect(() => {
     if (!selectedTrace?.trace_id) return;
+    const authToken = getStoredAuthToken();
     const source = new EventSource(
-      `${API_BASE}/api/traces/${selectedTrace.trace_id}/events/stream`,
+      `${API_BASE}/api/traces/${selectedTrace.trace_id}/events/stream${authToken ? `?token=${encodeURIComponent(authToken)}` : ""}`,
     );
     source.onmessage = (event) => {
       try {
