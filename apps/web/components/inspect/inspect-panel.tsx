@@ -80,7 +80,9 @@ export function InspectPanel({
 
   useEffect(() => {
     let mounted = true;
-    void (async () => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const refreshList = async () => {
       try {
         const [metricData, traces] = await Promise.all([
           apiFetch<MetricsOverview>("/api/metrics/overview"),
@@ -91,6 +93,7 @@ export function InspectPanel({
         setTraceList(traces);
         const target =
           traces.find((trace) => trace.trace_id === sessionId) ||
+          traces.find((trace) => trace.conversation_id === sessionId) ||
           traces[0] ||
           null;
         if (target) {
@@ -102,14 +105,27 @@ export function InspectPanel({
         } else {
           setTraceDetail(null);
         }
+        timeoutId = setTimeout(() => {
+          void refreshList();
+        }, 2000);
       } catch (error) {
         console.error("Failed to load inspect dashboard", error);
+        if (mounted) {
+          timeoutId = setTimeout(() => {
+            void refreshList();
+          }, 3000);
+        }
       } finally {
         if (mounted) setLoading(false);
       }
-    })();
+    };
+
+    void refreshList();
     return () => {
       mounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
   }, [sessionId]);
 
