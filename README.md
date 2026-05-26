@@ -2,6 +2,8 @@
 
 Hosted demo: [ollive-insure.vercel.app](https://ollive-insure.vercel.app/)
 
+![Ollive demo screenshot](./image.png)
+
 Use the invite code shared with you separately to get past the landing page.
 
 1. Enter the invite code on the landing page.
