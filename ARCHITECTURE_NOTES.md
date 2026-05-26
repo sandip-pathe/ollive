@@ -1,33 +1,31 @@
 ## Ingestion Flow
 
-1. Client submits a request through the Next.js web UI.
-2. The web UI invokes the Python SDK to call the LLM provider.
-3. The SDK writes a log message to Redis for fast buffering.
-4. An SDK shipper batches buffered logs and posts to the FastAPI ingestion endpoint.
-5. FastAPI validates payload schema and required fields.
-6. FastAPI inserts validated records into Postgres within a transaction.
-7. FastAPI publishes an enrichment job to Redis for the worker.
-8. A Python worker consumes the Redis queue and enriches records.
-9. The worker updates `enrichments` and marks records complete.
+1. A user starts a conversation in the Next.js UI.
+2. The browser sends chat requests to the FastAPI backend at `/api/conversations/{conv_id}/messages/stream`.
+3. The backend fetches recent context from Postgres, redacts sensitive content, and streams tokens through [packages/llm_sdk/openai_stream.py](./packages/llm_sdk/openai_stream.py).
+4. The backend writes `messages`, `traces`, `trace_events`, and `inference_logs` records as the conversation runs.
+5. The inspect UI reads `/api/metrics/overview`, `/api/traces`, and `/api/traces/{trace_id}/events/stream` to render live observability.
+6. [packages/llm_sdk/ingest.py](./packages/llm_sdk/ingest.py) is the lightweight fire-and-forget HTTP helper for SDK-style log emission.
 
 ## Logging Strategy
 
-- Log raw `prompt` and `response` at ingestion time for auditability.
-- Log model parameters and token counts for analytics and cost tracking.
-- Emit trace-level events for SDK errors and retry attempts.
-- Ship logs asynchronously from SDK to avoid blocking LLM response paths.
-- Batch logs at the shipper to trade lower request volume for marginal latency.
+- Log redacted input and output previews rather than full raw prompts in the normal path.
+- Capture provider, model, latency, token estimates, status, error text, and conversation/session IDs.
+- Emit trace events for request start, first token, chunk delivery, completion, warnings, and errors.
+- Keep the SDK-side log helper asynchronous so logging failures do not block the chat response.
+- Store observability data in Postgres so the inspect dashboard can query live product state.
 
 ## Scaling Considerations
 
 - Postgres write throughput can bottleneck ingestion; add time-based partitioning and bulk inserts.
-- Redis memory can saturate under bursts; enforce TTLs and employ maxmemory policies.
+- Redis memory can saturate under bursts; enforce TTLs and maxmemory policies where queued work is used.
 - Ingestion API CPU or I/O can spike; scale FastAPI with multiple ASGI workers behind a load balancer.
+- The inspect dashboard should continue to work even when traces are sparse, because empty-state queries are cheap.
 
 ## Failure Handling
 
-- If the ingestion API is down, the SDK retries with exponential backoff and local batching.
-- If Redis rejects writes, the SDK falls back to synchronous POST to the ingestion API.
-- If Postgres write fails, FastAPI records the failure and publishes the event to a retry queue.
-- If the enrichment worker crashes, Redis retains queued jobs for later consumption.
+- If the model key is missing, the streaming wrapper falls back to a stub response so the demo still runs.
+- If the ingestion API is down, the SDK helper swallows the error and chat delivery continues.
+- If Postgres write fails, the request should surface the failure in the trace and avoid hiding it as success.
+- If the browser cannot send headers for EventSource, the backend accepts token-in-query fallback for SSE.
 - Assume no perfect delivery; design for eventual consistency and idempotent writes.
