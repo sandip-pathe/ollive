@@ -1,3 +1,22 @@
+## Demo
+
+Live: https://ollive-insure.vercel.app/
+
+The app is behind an invite wall. Use(shared in email) code: `XXXX` to access.
+
+1. Enter the invite code on the landing page.
+2. Start a conversation — send 2–3 messages to test multi-turn context.
+3. Press Inspect from top right to see ingestion API in action
+4. Open DevTools → Network tab → filter by `api/` to see inference 
+   logs dispatched in real time.
+
+Implementation references:
+- [docker-compose.yml](./docker-compose.yml)
+- [SDK + Redis shipper](./sdk/shipper.py)
+- [Ingestion API](./apps/api/main.py)
+- [DB schema + migrations](./packages/database/schema.sql)
+
+
 ## Setup
 
 1. Clone the repository: `git clone https://github.com/your-org/ollive.git`.
@@ -14,6 +33,8 @@ For the demo login, use the invite code you set in `AUTH_INVITE_CODE`.
 
 The system captures LLM inference metadata in near real-time using an async SDK, a Redis buffer, and a FastAPI ingestion pipeline.
 Logs are enriched asynchronously by a worker process and stored in Postgres for querying.
+
+[read architecture notes](./ARCHITECTURE_NOTES.md)
 
 ## Local URLs
 
@@ -42,12 +63,4 @@ Logs are enriched asynchronously by a worker process and stored in Postgres for 
 - Add Kafka for the ingestion stream to improve throughput and durability under peak load.
 - Implement SDK batching with compression to reduce network usage and API calls.
 - Add Prometheus metrics and Grafana dashboards for ingestion latency and queue depth.
-# Ollive (scaffold)
 
-Scaffold for the Ollive assignment. See `docs/` for architecture and schema notes.
-
-Run the dev environment:
-
-```bash
-./scripts/start-dev.sh
-```
