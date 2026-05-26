@@ -543,9 +543,9 @@ async def metrics_overview():
             """
             SELECT
               COUNT(*) AS requests_today,
-              COALESCE(ROUND(AVG(latency_ms)::numeric, 1), 0) AS avg_latency_ms,
-              COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'error') / NULLIF(COUNT(*), 0), 1), 0) AS error_rate,
-              COALESCE(SUM(COALESCE(tokens_in, 0) + COALESCE(tokens_out, 0)), 0) AS tokens_processed
+              COALESCE(ROUND(AVG(il.latency_ms)::numeric, 1), 0) AS avg_latency_ms,
+              COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE il.status = 'error') / NULLIF(COUNT(*), 0), 1), 0) AS error_rate,
+              COALESCE(SUM(COALESCE(il.tokens_in, 0) + COALESCE(il.tokens_out, 0)), 0) AS tokens_processed
             FROM inference_logs il
             JOIN conversations c ON c.id = il.conversation_id
             WHERE c.actor_id=$1 AND il.created_at >= date_trunc('day', now())
