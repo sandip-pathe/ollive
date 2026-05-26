@@ -17,9 +17,11 @@ app.add_middleware(
 # Lazy import to avoid circulars
 from .db import init_db, close_db
 from .redis_client import init_redis, close_redis
+from .auth import router as auth_router
 from .routes import router
 from .trace_runtime import router as trace_router
 
+app.include_router(auth_router)
 app.include_router(router)
 app.include_router(trace_router)
 

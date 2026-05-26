@@ -3,10 +3,12 @@
 1. Clone the repository: `git clone https://github.com/your-org/ollive.git`.
 2. Change to project folder: `cd ollive`.
 3. Copy the example env: `cp .env.example .env`.
-4. Set `DATABASE_URL`, `REDIS_URL`, `OPENAI_API_KEY`, and `SECRET_KEY` in `.env`.
+4. Set `DATABASE_URL`, `REDIS_URL`, `OPENAI_API_KEY`, `AUTH_INVITE_CODE`, and `AUTH_SESSION_SECRET` in `.env`.
 5. Build and start services: `docker compose up -d --build`.
 6. Run migrations: `docker compose run --rm -v %cd%/packages/database:/schema postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -f /schema/schema.sql`.
 7. Start web development server: `cd apps/web && npm install && npm run dev`.
+
+For the demo login, use the invite code you set in `AUTH_INVITE_CODE`.
 
 ## Architecture Overview
 

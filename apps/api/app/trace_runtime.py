@@ -6,10 +6,11 @@ import time
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from . import db
+from .auth import get_current_user, require_current_user
 
 router = APIRouter(prefix="/api")
 
@@ -174,8 +175,9 @@ async def finalize_trace(
     )
 
 
-@router.get("/traces")
+@router.get("/traces", dependencies=[Depends(require_current_user)])
 async def list_traces(conversation_id: UUID | None = None, limit: int = 100):
+    current_user = get_current_user()
     limit = max(1, min(limit, 250))
     async with _get_pool().acquire() as conn:
         if conversation_id:
@@ -186,11 +188,13 @@ async def list_traces(conversation_id: UUID | None = None, limit: int = 100):
                   COUNT(e.id) AS events_count
                 FROM traces t
                 LEFT JOIN trace_events e ON e.trace_id = t.trace_id
-                WHERE t.conversation_id = $1
+                JOIN conversations c ON c.id = t.conversation_id
+                WHERE c.actor_id = $1 AND t.conversation_id = $2
                 GROUP BY t.trace_id
                 ORDER BY t.created_at DESC
-                LIMIT $2
+                LIMIT $3
                 """,
+                current_user.id,
                 conversation_id,
                 limit,
             )
@@ -202,19 +206,23 @@ async def list_traces(conversation_id: UUID | None = None, limit: int = 100):
                   COUNT(e.id) AS events_count
                 FROM traces t
                 LEFT JOIN trace_events e ON e.trace_id = t.trace_id
+                JOIN conversations c ON c.id = t.conversation_id
+                WHERE c.actor_id = $1
                 GROUP BY t.trace_id
                 ORDER BY t.created_at DESC
-                LIMIT $1
+                LIMIT $2
                 """,
+                current_user.id,
                 limit,
             )
         return [dict(row) for row in rows]
 
 
-@router.get("/traces/{trace_id}")
+@router.get("/traces/{trace_id}", dependencies=[Depends(require_current_user)])
 async def get_trace(trace_id: UUID):
+    current_user = get_current_user()
     async with _get_pool().acquire() as conn:
-        trace = await conn.fetchrow("SELECT * FROM traces WHERE trace_id=$1", trace_id)
+        trace = await conn.fetchrow("SELECT t.* FROM traces t JOIN conversations c ON c.id=t.conversation_id WHERE t.trace_id=$1 AND c.actor_id=$2", trace_id, current_user.id)
         if not trace:
             raise HTTPException(404, "Trace not found")
         events = await conn.fetch(
@@ -226,12 +234,14 @@ async def get_trace(trace_id: UUID):
             SELECT id, trace_id, conversation_id, message_id, provider, model, start_ts, end_ts, latency_ms,
                    tokens_in, tokens_out, status, error, redacted_input_preview,
                    redacted_output_preview, raw_payload, created_at
-            FROM inference_logs
-            WHERE trace_id=$1
-            ORDER BY created_at DESC
+            FROM inference_logs il
+            JOIN conversations c ON c.id = il.conversation_id
+            WHERE il.trace_id=$1 AND c.actor_id=$2
+            ORDER BY il.created_at DESC
             LIMIT 1
             """,
             trace_id,
+            current_user.id,
         )
         extracted_metadata = []
         if inference_log:
@@ -243,8 +253,9 @@ async def get_trace(trace_id: UUID):
         msgs = []
         if trace["conversation_id"]:
             conv = await conn.fetchrow(
-                "SELECT * FROM conversations WHERE id=$1",
+                "SELECT * FROM conversations WHERE id=$1 AND actor_id=$2",
                 trace["conversation_id"],
+                current_user.id,
             )
             msgs = await conn.fetch(
                 "SELECT * FROM messages WHERE conversation_id=$1 ORDER BY created_at ASC",
@@ -260,15 +271,17 @@ async def get_trace(trace_id: UUID):
         }
 
 
-@router.get("/traces/{trace_id}/events/stream")
+@router.get("/traces/{trace_id}/events/stream", dependencies=[Depends(require_current_user)])
 async def stream_trace_events(trace_id: UUID):
+    current_user = get_current_user()
     async def event_stream():
         seen_ids: set[str] = set()
         while True:
             async with _get_pool().acquire() as conn:
                 trace = await conn.fetchrow(
-                    "SELECT status FROM traces WHERE trace_id=$1",
+                    "SELECT t.status FROM traces t JOIN conversations c ON c.id=t.conversation_id WHERE t.trace_id=$1 AND c.actor_id=$2",
                     trace_id,
+                    current_user.id,
                 )
                 rows = await conn.fetch(
                     "SELECT id, trace_id, type, timestamp, duration_ms, payload FROM trace_events WHERE trace_id=$1 ORDER BY timestamp ASC",

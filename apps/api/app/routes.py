@@ -1,16 +1,20 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import asyncio
 from uuid import UUID, uuid4
 from typing import Any
 import json
+import os
 from . import db
+from .auth import get_current_user, require_current_user
 from .trace_runtime import create_trace, emit_trace_event, finalize_trace, now_ms
 from packages.shared.redaction import redact_text, redact_preview
 from packages.llm_sdk.openai_stream import stream_chat
 
 router = APIRouter(prefix="/api")
+
+MAX_CALLS_PER_USER = int(os.getenv("MAX_CALLS_PER_USER", "1000"))
 
 class ConversationCreate(BaseModel):
     title: str | None = None
@@ -47,39 +51,71 @@ def _message_context(rows):
     ]
 
 
-@router.post("/conversations")
+async def _owned_conversation(conn, conv_id: UUID, user_id: UUID):
+    return await conn.fetchrow(
+        "SELECT * FROM conversations WHERE id=$1 AND actor_id=$2",
+        conv_id,
+        user_id,
+    )
+
+
+async def _consume_user_call_quota(conn, user_id: UUID):
+    row = await conn.fetchrow(
+        """
+        UPDATE users
+        SET llm_call_count = llm_call_count + 1
+        WHERE id = $1 AND llm_call_count < $2
+        RETURNING llm_call_count
+        """,
+        user_id,
+        MAX_CALLS_PER_USER,
+    )
+    if not row:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Call cap reached ({MAX_CALLS_PER_USER}). Contact the owner for a reset.",
+        )
+
+
+@router.post("/conversations", dependencies=[Depends(require_current_user)])
 async def create_conversation(payload: ConversationCreate):
+    current_user = get_current_user()
     async with _get_pool().acquire() as conn:
         row = await conn.fetchrow(
-            "INSERT INTO conversations (title) VALUES ($1) RETURNING id, title, status, created_at",
+            "INSERT INTO conversations (title, actor_id) VALUES ($1, $2) RETURNING id, title, status, created_at",
             payload.title,
+            current_user.id,
         )
         return dict(row)
 
 
-@router.get("/conversations")
+@router.get("/conversations", dependencies=[Depends(require_current_user)])
 async def list_conversations():
+    current_user = get_current_user()
     async with _get_pool().acquire() as conn:
-        rows = await conn.fetch("SELECT id, title, status, created_at FROM conversations ORDER BY created_at DESC")
+        rows = await conn.fetch("SELECT id, title, status, created_at FROM conversations WHERE actor_id=$1 ORDER BY created_at DESC", current_user.id)
         return [dict(r) for r in rows]
 
 
-@router.get("/conversations/{conv_id}")
+@router.get("/conversations/{conv_id}", dependencies=[Depends(require_current_user)])
 async def get_conversation(conv_id: UUID):
+    current_user = get_current_user()
     async with _get_pool().acquire() as conn:
-        conv = await conn.fetchrow("SELECT * FROM conversations WHERE id=$1", conv_id)
+        conv = await conn.fetchrow("SELECT * FROM conversations WHERE id=$1 AND actor_id=$2", conv_id, current_user.id)
         if not conv:
             raise HTTPException(404, "Conversation not found")
         msgs = await conn.fetch("SELECT * FROM messages WHERE conversation_id=$1 ORDER BY created_at ASC", conv_id)
         return {"conversation": dict(conv), "messages": [dict(m) for m in msgs]}
 
 
-@router.post("/conversations/{conv_id}/messages")
+@router.post("/conversations/{conv_id}/messages", dependencies=[Depends(require_current_user)])
 async def create_message(conv_id: UUID, payload: MessageCreate):
+    current_user = get_current_user()
     async with _get_pool().acquire() as conn:
-        conv = await conn.fetchrow("SELECT id FROM conversations WHERE id=$1", conv_id)
+        conv = await conn.fetchrow("SELECT id FROM conversations WHERE id=$1 AND actor_id=$2", conv_id, current_user.id)
         if not conv:
             raise HTTPException(404, "Conversation not found")
+        await _consume_user_call_quota(conn, current_user.id)
         redacted, _redactions = redact_text(payload.content)
         msg = await conn.fetchrow(
             "INSERT INTO messages (conversation_id, role, content, content_redacted) VALUES ($1,$2,$3,true) RETURNING *",
@@ -94,8 +130,9 @@ async def create_message(conv_id: UUID, payload: MessageCreate):
         return {"message": dict(msg), "inference_log_id": infer['id']}
 
 
-@router.post("/conversations/{conv_id}/messages/stream")
+@router.post("/conversations/{conv_id}/messages/stream", dependencies=[Depends(require_current_user)])
 async def stream_message(conv_id: UUID, payload: MessageCreate):
+    current_user = get_current_user()
     trace_id = uuid4()
     started_at_ms = now_ms()
     first_token_ms: int | None = None
@@ -107,25 +144,16 @@ async def stream_message(conv_id: UUID, payload: MessageCreate):
     pii_detected = user_preview != payload.content
 
     async with _get_pool().acquire() as conn:
-        conv = await conn.fetchrow("SELECT id FROM conversations WHERE id=$1", conv_id)
+        conv = await conn.fetchrow("SELECT id FROM conversations WHERE id=$1 AND actor_id=$2", conv_id, current_user.id)
         if not conv:
             raise HTTPException(404, "Conversation not found")
+        await _consume_user_call_quota(conn, current_user.id)
         redacted, _redactions = redact_text(payload.content)
         user_msg = await conn.fetchrow(
             "INSERT INTO messages (conversation_id, role, content, content_redacted) VALUES ($1,$2,$3,true) RETURNING *",
             conv_id,
             payload.role,
             redacted,
-        )
-        infer = await conn.fetchrow(
-            "INSERT INTO inference_logs (trace_id, provider, model, conversation_id, message_id, status, redacted_input_preview) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id",
-            trace_id,
-            'openai',
-            'gpt-4o-mini',
-            conv_id,
-            user_msg['id'],
-            'streaming',
-            user_preview,
         )
         history_rows = await conn.fetch(
             """
@@ -165,6 +193,16 @@ async def stream_message(conv_id: UUID, payload: MessageCreate):
             retry_count=0,
             pii_detected=pii_detected,
         )
+        infer = await conn.fetchrow(
+            "INSERT INTO inference_logs (trace_id, provider, model, conversation_id, message_id, status, redacted_input_preview) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id",
+            trace_id,
+            'openai',
+            'gpt-4o-mini',
+            conv_id,
+            user_msg['id'],
+            'streaming',
+            user_preview,
+        )
         await emit_trace_event(
             conn,
             trace_id,
@@ -187,7 +225,7 @@ async def stream_message(conv_id: UUID, payload: MessageCreate):
         nonlocal assistant_text, first_token_ms, chunk_count, final_status, finish_reason
         try:
             async with _get_pool().acquire() as conn:
-                await conn.execute("UPDATE conversations SET status='active' WHERE id=$1", conv_id)
+                await conn.execute("UPDATE conversations SET status='active' WHERE id=$1 AND actor_id=$2", conv_id, current_user.id)
                 await emit_trace_event(
                     conn,
                     trace_id,
@@ -405,31 +443,35 @@ async def stream_message(conv_id: UUID, payload: MessageCreate):
 
     return StreamingResponse(event_stream(), media_type='text/event-stream')
 
-@router.post("/conversations/{conv_id}/cancel")
+@router.post("/conversations/{conv_id}/cancel", dependencies=[Depends(require_current_user)])
 async def cancel_conv(conv_id: UUID):
+    current_user = get_current_user()
     async with _get_pool().acquire() as conn:
-        conv = await conn.fetchrow("SELECT id FROM conversations WHERE id=$1", conv_id)
+        conv = await conn.fetchrow("SELECT id FROM conversations WHERE id=$1 AND actor_id=$2", conv_id, current_user.id)
         if not conv:
             raise HTTPException(404, "Conversation not found")
         return {"ok": True}
 
 
-@router.post("/conversations/{conv_id}/pause")
+@router.post("/conversations/{conv_id}/pause", dependencies=[Depends(require_current_user)])
 async def pause_conv(conv_id: UUID):
+    current_user = get_current_user()
     async with _get_pool().acquire() as conn:
-        await conn.execute("UPDATE conversations SET status='paused' WHERE id=$1", conv_id)
+        await conn.execute("UPDATE conversations SET status='paused' WHERE id=$1 AND actor_id=$2", conv_id, current_user.id)
         return {"ok": True}
 
 
-@router.post("/conversations/{conv_id}/resume")
+@router.post("/conversations/{conv_id}/resume", dependencies=[Depends(require_current_user)])
 async def resume_conv(conv_id: UUID):
+    current_user = get_current_user()
     async with _get_pool().acquire() as conn:
-        await conn.execute("UPDATE conversations SET status='active' WHERE id=$1", conv_id)
+        await conn.execute("UPDATE conversations SET status='active' WHERE id=$1 AND actor_id=$2", conv_id, current_user.id)
         return {"ok": True}
 
 
-@router.get("/inference-logs")
+@router.get("/inference-logs", dependencies=[Depends(require_current_user)])
 async def list_inference_logs(conversation_id: UUID | None = None, limit: int = 100):
+    current_user = get_current_user()
     limit = max(1, min(limit, 250))
     async with _get_pool().acquire() as conn:
         if conversation_id:
@@ -438,11 +480,13 @@ async def list_inference_logs(conversation_id: UUID | None = None, limit: int = 
                 SELECT id, conversation_id, message_id, provider, model, start_ts, end_ts, latency_ms,
                        tokens_in, tokens_out, status, error, redacted_input_preview,
                        redacted_output_preview, created_at
-                FROM inference_logs
-                WHERE conversation_id=$1
-                ORDER BY created_at DESC
-                LIMIT $2
+                FROM inference_logs il
+                JOIN conversations c ON c.id = il.conversation_id
+                WHERE c.actor_id=$1 AND il.conversation_id=$2
+                ORDER BY il.created_at DESC
+                LIMIT $3
                 """,
+                current_user.id,
                 conversation_id,
                 limit,
             )
@@ -452,27 +496,33 @@ async def list_inference_logs(conversation_id: UUID | None = None, limit: int = 
                 SELECT id, conversation_id, message_id, provider, model, start_ts, end_ts, latency_ms,
                        tokens_in, tokens_out, status, error, redacted_input_preview,
                        redacted_output_preview, created_at
-                FROM inference_logs
-                ORDER BY created_at DESC
-                LIMIT $1
+                FROM inference_logs il
+                JOIN conversations c ON c.id = il.conversation_id
+                WHERE c.actor_id=$1
+                ORDER BY il.created_at DESC
+                LIMIT $2
                 """,
+                current_user.id,
                 limit,
             )
         return [dict(r) for r in rows]
 
 
-@router.get("/inference-logs/{log_id}")
+@router.get("/inference-logs/{log_id}", dependencies=[Depends(require_current_user)])
 async def get_inference_log(log_id: UUID):
+    current_user = get_current_user()
     async with _get_pool().acquire() as conn:
         row = await conn.fetchrow(
             """
             SELECT id, conversation_id, message_id, provider, model, start_ts, end_ts, latency_ms,
                    tokens_in, tokens_out, status, error, redacted_input_preview,
                    redacted_output_preview, raw_payload, created_at
-            FROM inference_logs
-            WHERE id=$1
+            FROM inference_logs il
+            JOIN conversations c ON c.id = il.conversation_id
+            WHERE il.id=$1 AND c.actor_id=$2
             """,
             log_id,
+            current_user.id,
         )
         if not row:
             raise HTTPException(404, "Inference log not found")
@@ -485,8 +535,9 @@ async def get_inference_log(log_id: UUID):
         return payload
 
 
-@router.get("/metrics/overview")
+@router.get("/metrics/overview", dependencies=[Depends(require_current_user)])
 async def metrics_overview():
+    current_user = get_current_user()
     async with _get_pool().acquire() as conn:
         metrics = await conn.fetchrow(
             """
@@ -495,9 +546,11 @@ async def metrics_overview():
               COALESCE(ROUND(AVG(latency_ms)::numeric, 1), 0) AS avg_latency_ms,
               COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'error') / NULLIF(COUNT(*), 0), 1), 0) AS error_rate,
               COALESCE(SUM(COALESCE(tokens_in, 0) + COALESCE(tokens_out, 0)), 0) AS tokens_processed
-            FROM inference_logs
-            WHERE created_at >= date_trunc('day', now())
-            """
+            FROM inference_logs il
+            JOIN conversations c ON c.id = il.conversation_id
+            WHERE c.actor_id=$1 AND il.created_at >= date_trunc('day', now())
+            """,
+                current_user.id,
         )
         conversations = await conn.fetchrow(
             """
@@ -507,22 +560,29 @@ async def metrics_overview():
               COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled_conversations,
               COUNT(*) FILTER (WHERE status = 'completed') AS completed_conversations
             FROM conversations
+            WHERE actor_id=$1
             """
+            ,
+                current_user.id,
         )
         status_rows = await conn.fetch(
-            "SELECT status, COUNT(*) AS count FROM inference_logs GROUP BY status ORDER BY count DESC"
+            "SELECT il.status, COUNT(*) AS count FROM inference_logs il JOIN conversations c ON c.id = il.conversation_id WHERE c.actor_id=$1 GROUP BY il.status ORDER BY count DESC",
+            current_user.id,
         )
         provider_rows = await conn.fetch(
-            "SELECT provider, COUNT(*) AS count FROM inference_logs GROUP BY provider ORDER BY count DESC LIMIT 6"
+            "SELECT il.provider, COUNT(*) AS count FROM inference_logs il JOIN conversations c ON c.id = il.conversation_id WHERE c.actor_id=$1 GROUP BY il.provider ORDER BY count DESC LIMIT 6",
+            current_user.id,
         )
         recent_errors = await conn.fetch(
             """
-            SELECT id, provider, model, status, error, latency_ms, created_at
-            FROM inference_logs
-            WHERE status = 'error'
-            ORDER BY created_at DESC
+            SELECT il.id, il.provider, il.model, il.status, il.error, il.latency_ms, il.created_at
+            FROM inference_logs il
+            JOIN conversations c ON c.id = il.conversation_id
+            WHERE c.actor_id=$1 AND il.status = 'error'
+            ORDER BY il.created_at DESC
             LIMIT 5
-            """
+            """,
+            current_user.id,
         )
         return {
             "requests_today": int(metrics["requests_today"] or 0),

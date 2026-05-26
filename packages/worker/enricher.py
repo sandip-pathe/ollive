@@ -8,6 +8,7 @@ import redis.asyncio as aioredis
 
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://ollive:changeme@localhost:5432/ollive_dev')
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+WORKER_PORT = int(os.getenv('PORT', '8000'))
 
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
 
@@ -54,5 +55,35 @@ async def enrich_loop():
         await pool.close()
         await redis.close()
 
+
+async def health_handler(reader, writer):
+    try:
+        await reader.readline()
+        while True:
+            header = await reader.readline()
+            if header in (b'\r\n', b'\n', b''):
+                break
+        writer.write(
+            b'HTTP/1.1 200 OK\r\n'
+            b'Content-Type: text/plain\r\n'
+            b'Content-Length: 2\r\n'
+            b'Connection: close\r\n\r\n'
+            b'ok'
+        )
+        await writer.drain()
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
+async def serve_health():
+    server = await asyncio.start_server(health_handler, '0.0.0.0', WORKER_PORT)
+    async with server:
+        await server.serve_forever()
+
+
+async def main():
+    await asyncio.gather(enrich_loop(), serve_health())
+
 if __name__ == '__main__':
-    asyncio.run(enrich_loop())
+    asyncio.run(main())

@@ -231,12 +231,22 @@ export default function ChatPage() {
       }
 
       await loadConversations(conversationId);
+      window.dispatchEvent(
+        new CustomEvent("ollive:trace-refresh", {
+          detail: { conversationId },
+        }),
+      );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         return;
       }
       console.error("Streaming failed", error);
       await loadConversation(conversationId);
+      window.dispatchEvent(
+        new CustomEvent("ollive:trace-refresh", {
+          detail: { conversationId },
+        }),
+      );
     } finally {
       abortRef.current = null;
       setStreaming(false);

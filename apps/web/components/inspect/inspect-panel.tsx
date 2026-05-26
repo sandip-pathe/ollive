@@ -80,7 +80,6 @@ export function InspectPanel({
 
   useEffect(() => {
     let mounted = true;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const refreshList = async () => {
       try {
@@ -105,16 +104,8 @@ export function InspectPanel({
         } else {
           setTraceDetail(null);
         }
-        timeoutId = setTimeout(() => {
-          void refreshList();
-        }, 2000);
       } catch (error) {
         console.error("Failed to load inspect dashboard", error);
-        if (mounted) {
-          timeoutId = setTimeout(() => {
-            void refreshList();
-          }, 3000);
-        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -123,9 +114,51 @@ export function InspectPanel({
     void refreshList();
     return () => {
       mounted = false;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+    };
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+
+    let cancelled = false;
+
+    const handleRefresh = (event: Event) => {
+      const detail = (event as CustomEvent<{ conversationId?: string }>).detail;
+      if (detail?.conversationId && detail.conversationId !== sessionId) {
+        return;
       }
+
+      void (async () => {
+        try {
+          const [metricData, traces] = await Promise.all([
+            apiFetch<MetricsOverview>("/api/metrics/overview"),
+            apiFetch<ApiTrace[]>("/api/traces?limit=100"),
+          ]);
+          if (cancelled) return;
+          setMetrics(metricData);
+          setTraceList(traces);
+          const target =
+            traces.find((trace) => trace.trace_id === sessionId) ||
+            traces.find((trace) => trace.conversation_id === sessionId) ||
+            traces[0] ||
+            null;
+          if (target) {
+            const refreshed = await apiFetch<TraceDetail>(
+              `/api/traces/${target.trace_id}`,
+            );
+            if (cancelled) return;
+            setTraceDetail(refreshed);
+          }
+        } catch (error) {
+          console.error("Failed to refresh inspect dashboard", error);
+        }
+      })();
+    };
+
+    window.addEventListener("ollive:trace-refresh", handleRefresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("ollive:trace-refresh", handleRefresh);
     };
   }, [sessionId]);
 
