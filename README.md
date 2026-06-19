@@ -18,6 +18,20 @@ Hosted demo: [ollive-insure.vercel.app](https://ollive-insure.vercel.app/)
 - Renders chat messages as rich Markdown instead of raw Markdown text.
 - Runs locally with Docker Compose, including the web app, API, Postgres, Redis, and enrichment worker.
 
+## Screenshots
+
+### Chat Workspace
+
+![Ollive chat workspace](./docs/assets/ollive-chat-workspace.png)
+
+### Trace Evidence Console
+
+![Ollive trace evidence console](./docs/assets/ollive-inspect-console.png)
+
+### Agent Risk & Insurability Evidence Packet
+
+![Ollive evidence packet](./docs/assets/ollive-evidence-packet.png)
+
 ## Local Setup
 
 1. Copy the example environment file.
