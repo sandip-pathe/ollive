@@ -21,6 +21,8 @@ router = APIRouter(prefix="/api/auth")
 AUTH_INVITE_CODE = os.getenv("AUTH_INVITE_CODE")
 AUTH_SESSION_SECRET = os.getenv("AUTH_SESSION_SECRET")
 SESSION_TTL_SECONDS = int(os.getenv("AUTH_SESSION_TTL_SECONDS", str(60 * 60 * 24 * 30)))
+AUTH_BYPASS = os.getenv("AUTH_BYPASS", "").lower() in {"1", "true", "yes", "on"}
+DEV_USER_ID = UUID("00000000-0000-4000-8000-000000000001")
 _CURRENT_USER: ContextVar[AuthUser | None] = ContextVar("ollive_current_user", default=None)
 
 
@@ -120,7 +122,28 @@ async def _load_user_by_id(user_id: UUID) -> AuthUser | None:
     return AuthUser(**dict(row))
 
 
+async def _get_or_create_dev_user() -> AuthUser:
+    async with _get_pool().acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO users (id, display_name)
+            VALUES ($1, $2)
+            ON CONFLICT (id) DO UPDATE
+            SET display_name = EXCLUDED.display_name
+            RETURNING id, display_name, created_at
+            """,
+            DEV_USER_ID,
+            "Dev",
+        )
+    return AuthUser(**dict(row))
+
+
 async def require_current_user(request: Request) -> AuthUser:
+    if AUTH_BYPASS:
+        user = await _get_or_create_dev_user()
+        _set_current_user(user)
+        return user
+
     auth_header = request.headers.get("authorization", "")
     token = ""
     if auth_header.lower().startswith("bearer "):

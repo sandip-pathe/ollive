@@ -21,7 +21,7 @@ export function MessageList({ messages }: MessageListProps) {
       } else if (containerRef.current) {
         containerRef.current.scrollTop = containerRef.current.scrollHeight;
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
   }, [messages]);

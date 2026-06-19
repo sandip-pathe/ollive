@@ -95,6 +95,59 @@ export type TraceDetail = {
   extracted_metadata?: TraceMetadataEntry[];
 };
 
+export type InsurabilityPosture = "insurable" | "needs_review" | "blocked" | "unknown";
+export type EvidencePacketStatus = "pending" | "ready" | "error";
+export type AgentRiskStatus = "clear" | "needs_review" | "risk_detected" | "blocked";
+export type AgentRiskSeverity = "low" | "medium" | "high" | "critical";
+
+export type EvidencePacket = {
+  id?: string | null;
+  trace_id: string;
+  conversation_id?: string | null;
+  status: EvidencePacketStatus | string;
+  insurability_posture: InsurabilityPosture | string;
+  summary: string;
+  packet_json?: unknown;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type AgentRiskEvent = {
+  id: string;
+  trace_id: string;
+  risk_category: string;
+  status: AgentRiskStatus | string;
+  severity: AgentRiskSeverity | string;
+  confidence: number;
+  owner: string;
+  title: string;
+  reason: string;
+  evidence_quote?: string | null;
+  evidence_source: string;
+  remediation: string;
+  classifier_version?: string | null;
+  created_at?: string | null;
+};
+
+export type FailureNode = {
+  type: string;
+  owner: string;
+  evidence: string;
+};
+
+export type EvidencePacketResponse = {
+  packet: EvidencePacket;
+  risk_events: AgentRiskEvent[];
+  failure_nodes: FailureNode[];
+  audit_trail: {
+    policy_pack?: string;
+    classifier_version?: string;
+    source_trace_events?: number;
+    redacted?: boolean;
+    [key: string]: unknown;
+  };
+};
+
 export type InferenceLog = {
   id: string;
   conversation_id?: string | null;

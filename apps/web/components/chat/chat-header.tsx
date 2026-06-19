@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, PanelLeft, PanelRightOpen } from "lucide-react";
+import { PanelLeft, PanelRightOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type ChatHeaderProps = {
@@ -12,7 +12,6 @@ type ChatHeaderProps = {
 };
 
 export function ChatHeader({
-  title,
   sidebarOpen,
   onToggleSidebar,
   onToggleInspect,

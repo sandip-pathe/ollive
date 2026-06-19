@@ -1,72 +1,146 @@
-## Demo
+# Ollive
+
+Ollive is an agentic insurance observability prototype. It treats every chat run as an agent action, records the runtime trace, and turns that trace into an Agent Risk & Insurability Evidence Packet.
+
+The product thesis is simple: if an insurance company is willing to insure AI-agent actions inside customer workflows, it needs more than token counts and latency charts. It needs evidence of trust, auditability, accountability, authority boundaries, failure nodes, and remediation ownership.
 
 Hosted demo: [ollive-insure.vercel.app](https://ollive-insure.vercel.app/)
 
-![Ollive demo screenshot](./image.png)
+## What It Does
 
-Use the invite code shared with you separately to get past the landing page.
+- Streams multi-turn chat through a FastAPI backend and OpenAI-compatible wrapper.
+- Persists conversations, messages, traces, trace events, inference logs, and extracted metadata in Postgres.
+- Shows live inspection for request lifecycle, latency, token/cost evidence, raw request/response payloads, and event timelines.
+- Generates an Agent Risk & Insurability Evidence Packet for a selected trace.
+- Classifies agentic risk with the `agentic_insurance_v1` policy pack.
+- Flags risky promises, coverage/regulated advice, PII exposure, missed escalation, unsupported claims, unsafe suggestions, runtime failure nodes, and authority boundary breaches.
+- Assigns owner and remediation for each risk event.
+- Renders chat messages as rich Markdown instead of raw Markdown text.
+- Runs locally with Docker Compose, including the web app, API, Postgres, Redis, and enrichment worker.
 
-1. Enter the invite code on the landing page.
-2. Start a conversation, then send 2-3 messages to test multi-turn context.
-3. Press the Inspect button in the top right to see the ingestion and trace views.
-4. Open DevTools, go to the Network tab, and filter by `api/` to watch requests in real time.
+## Local Setup
 
-Implementation references:
-- [docker-compose.yml](./docker-compose.yml)
-- [SDK log helper](./packages/llm_sdk/ingest.py)
-- [Streaming wrapper](./packages/llm_sdk/openai_stream.py)
-- [FastAPI app bootstrap](./apps/api/app/main.py)
-- [Chat, auth, metrics, and trace routes](./apps/api/app/routes.py)
-- [Trace runtime](./apps/api/app/trace_runtime.py)
-- [DB schema + migrations](./packages/database/schema.sql)
+1. Copy the example environment file.
 
+   ```bash
+   cp .env.example .env
+   ```
 
-## Setup
+2. Set `OPENAI_API_KEY` in `.env` if you want real model responses. Without it, the backend returns a stubbed streaming response so the app still runs.
 
-1. Clone the repository: `git clone https://github.com/your-org/ollive.git`.
-2. Change to the project folder: `cd ollive`.
-3. Copy the example env: `cp .env.example .env`.
-4. Set `DATABASE_URL`, `REDIS_URL`, `OPENAI_API_KEY`, `AUTH_INVITE_CODE`, `AUTH_SESSION_SECRET`, and `MAX_CALLS_PER_USER` in `.env`.
-5. Build and start services: `docker compose up -d --build`.
-6. Apply the schema: `cat packages/database/schema.sql | docker compose exec -T postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB}`.
-7. Start the web development server: `cd apps/web && npm install && npm run dev`.
+3. Start the full local stack.
 
-For the demo login, use the invite code you set in `AUTH_INVITE_CODE`.
+   ```bash
+   docker compose up -d --build
+   ```
 
-## Architecture Overview
+4. Open the app.
 
-The system is split between a Next.js frontend and a FastAPI backend. The browser talks to the API for auth, conversations, streaming chat, traces, and metrics. The backend streams model output through [packages/llm_sdk/openai_stream.py](./packages/llm_sdk/openai_stream.py), redacts content, writes messages, traces, inference logs, and events to Postgres, and serves the inspect dashboard. [packages/llm_sdk/ingest.py](./packages/llm_sdk/ingest.py) is the fire-and-forget HTTP helper for SDK-style log emission.
+   - Web: [http://localhost:3000](http://localhost:3000)
+   - API health: [http://localhost:8001/health](http://localhost:8001/health)
+   - API docs: [http://localhost:8001/docs](http://localhost:8001/docs)
 
-[read architecture notes](./ARCHITECTURE_NOTES.md)
+The Docker setup enables local auth bypass by default with `AUTH_BYPASS=true` and `NEXT_PUBLIC_AUTH_BYPASS=true`. For shared or production-like environments, disable bypass and set a real `AUTH_INVITE_CODE` plus a long random `AUTH_SESSION_SECRET`.
 
-## Local URLs
+## Demo Flow
 
-- UI: http://localhost:3000
-- API docs: http://localhost:8001/docs
+1. Start a new chat and send a few representative prompts.
+2. Open the Inspect panel.
+3. Select a trace from the trace evidence console.
+4. Review the live trace details and event timeline.
+5. Open the evidence packet tab to see insurability posture, risk events, owner, remediation, audit trail, and failure nodes.
+6. Use Recompute after a trace changes or after backfilling trace events.
 
-## Schema Design
+## Core Endpoints
 
-- `users` - `id`, `display_name`, `llm_call_count`, `created_at` - auth records plus the per-user hard cap counter.
-- `conversations` - `id`, `actor_id`, `title`, `status`, `metadata`, `created_at`, `updated_at` - one chat thread per user.
-- `messages` - `id`, `conversation_id`, `role`, `content`, `content_redacted`, `tokens`, `metadata`, `created_at` - stored chat turns.
-- `traces` - `trace_id`, `conversation_id`, `message_id`, `session_id`, `provider`, `model`, `started_at`, `completed_at`, `latency_ms`, `ttft_ms`, `stream_duration_ms`, `prompt_tokens`, `completion_tokens`, `total_tokens`, `estimated_cost_usd`, `status`, `raw_request_json`, `raw_response_json`, `created_at` - stream-level telemetry.
-- `trace_events` - `id`, `trace_id`, `type`, `timestamp`, `duration_ms`, `payload` - live events from the chat stream.
-- `inference_logs` - `id`, `trace_id`, `conversation_id`, `message_id`, `provider`, `model`, `start_ts`, `end_ts`, `latency_ms`, `tokens_in`, `tokens_out`, `status`, `error`, `redacted_input_preview`, `redacted_output_preview`, `raw_payload`, `created_at` - ingestion-friendly log records.
-- `extracted_metadata` - `id`, `inference_log_id`, `key`, `value`, `created_at` - queryable key/value metadata.
-- `memories` - `id`, `subject_id`, `type`, `summary`, `vector`, `source_log_id`, `created_at`, `updated_at` - optional future memory layer.
+- `POST /api/auth/invite` - create a local session from an invite code.
+- `GET /api/auth/session` - read the current session.
+- `POST /api/conversations` - create a conversation.
+- `GET /api/conversations` - list conversations.
+- `GET /api/conversations/{id}` - get conversation detail and messages.
+- `POST /api/conversations/{id}/messages/stream` - stream a chat response and write trace evidence.
+- `POST /api/conversations/{id}/cancel` - cancel or pause an active conversation.
+- `POST /api/ingest/logs` - accept SDK-style inference logs.
+- `GET /api/metrics/overview` - read dashboard metrics.
+- `GET /api/traces` - list traces.
+- `GET /api/traces/{trace_id}` - read trace detail.
+- `GET /api/traces/{trace_id}/events/stream` - stream trace events.
+- `GET /api/traces/{trace_id}/evidence-packet` - read or lazily generate an evidence packet.
+- `POST /api/traces/{trace_id}/evidence-packet/recompute` - recompute risk events and packet summary.
 
-## Tradeoffs
+## Architecture
 
-- Use Postgres for durable logs - provides ACID and SQL analytics - increases operational complexity.
-- Use Redis for transient buffering - enables fast ingestion and backpressure smoothing - increases memory requirements.
-- Use FastAPI for ingestion endpoints - provides async I/O and Python typing - requires ASGI configuration.
-- Use a dedicated Python worker process for enrichment - enables retries and heavy processing off the main path - adds deployment complexity.
-- Batch writes on ingestion to reduce Postgres load - lowers write amplification - increases ingestion latency.
+Ollive is a small monorepo:
 
-## What I'd Improve
+- `apps/web` - Next.js app router UI for chat, auth, and inspect views.
+- `apps/api` - FastAPI service for auth, chat streaming, ingestion, metrics, traces, and evidence packets.
+- `packages/llm_sdk` - OpenAI streaming wrapper and non-blocking ingestion helper.
+- `packages/shared` - redaction utilities and shared helpers.
+- `packages/database` - SQL schema and database notes.
+- `packages/worker` - Redis enrichment worker for metadata extraction.
+- `docs` - architecture, product, schema, tradeoff, and readiness notes.
 
-- Add time-based partitioning on `inference_logs` to speed large-table queries.
-- Add column-level encryption for `prompt` and `response` to reduce data exposure risks.
-- Add Kafka for the ingestion stream to improve throughput and durability under peak load.
-- Implement SDK batching with compression to reduce network usage and API calls.
-- Add Prometheus metrics and Grafana dashboards for ingestion latency and queue depth.
+The trace flow is:
+
+```text
+chat request
+  -> FastAPI stream endpoint
+  -> OpenAI wrapper or stubbed stream
+  -> messages + traces + trace_events + inference_logs
+  -> evidence packet scheduler
+  -> risk classifier
+  -> agent_risk_events + evidence_packets
+  -> inspect UI
+```
+
+Read more:
+
+- [Architecture notes](./ARCHITECTURE_NOTES.md)
+- [System architecture](./docs/architecture.md)
+- [Agentic insurance observability](./docs/agentic-insurance-observability.md)
+- [Schema notes](./docs/schema.md)
+- [Tradeoffs](./docs/tradeoffs.md)
+- [Ship readiness](./docs/ship-readiness.md)
+
+## Database Tables
+
+- `users` - invite/session identity plus local LLM call counts.
+- `conversations` - chat threads.
+- `messages` - user and assistant turns.
+- `traces` - request-level runtime telemetry.
+- `trace_events` - lifecycle and streaming events for a trace.
+- `inference_logs` - SDK-friendly request logs.
+- `extracted_metadata` - worker-extracted key/value metadata.
+- `agent_policy_rules` - the active insurance risk policy pack.
+- `agent_risk_events` - trace-level risk findings with severity, owner, evidence, and remediation.
+- `evidence_packets` - packet status, insurability posture, summary, audit trail, and failure nodes.
+- `memories` - optional future memory layer.
+
+## Verification
+
+Useful checks before pushing:
+
+```bash
+python -m py_compile apps/api/app/auth.py apps/api/app/db.py apps/api/app/routes.py apps/api/app/trace_runtime.py apps/api/app/risk_classifier.py
+```
+
+```bash
+cd apps/web
+npx tsc --noEmit --pretty false
+```
+
+```bash
+cd apps/web
+npx eslint components/chat/markdown-message.tsx components/chat/assistant-message.tsx components/chat/user-message.tsx components/chat/chat-layout.tsx components/inspect/inspect-panel.tsx components/inspect/inspect-tabs.tsx components/inspect/evidence-packet.tsx components/inspect/ops-review.tsx components/auth/auth-gate.tsx app/lib/api.ts app/lib/auth.ts
+```
+
+```bash
+git diff --check
+docker compose ps
+```
+
+## Shipping Position
+
+You can call this an observability tool now, but be precise: it is an agentic insurance observability MVP for chat-as-agent workflows. It has real trace capture, persistence, risk classification, evidence packets, and an inspect UI.
+
+Do not call it a production LangSmith replacement yet. Before production, it still needs SDK ingestion for external agents, multi-tenant controls, retention policy, alerting, evals, review workflows, stronger test coverage, and deploy hardening. See [ship readiness](./docs/ship-readiness.md).

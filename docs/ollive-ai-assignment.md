@@ -1,5 +1,7 @@
 # Ollive AI Assignment Plan
 
+Status: historical assignment brief. The current product direction is agentic insurance observability; see `README.md` and `docs/agentic-insurance-observability.md` for the current spec and claim boundary.
+
 ## Goal
 
 Build a production-shaped LLM chatbot and observability system that matches Ollive's assignment brief: a multi‑turn chatbot UI, a lightweight inference logging SDK/wrapper, an ingestion API, database persistence, and clear architecture notes. The project should be small enough to finish quickly but structured like a real product that could grow into a full platform. It should also be designed so that a long‑term memory layer (such as Mem0 or a similar service) could be plugged in later without major changes.
@@ -136,7 +138,7 @@ ollive-ai-assignment/
 │   ├── web/
 │   └── api/
 ├── packages/
-│   ├── llm-sdk/
+│   ├── llm_sdk/
 │   ├── shared/
 │   └── database/
 ├── docs/
@@ -154,7 +156,7 @@ ollive-ai-assignment/
 
 - `apps/web`: Chat UI, conversation list, resume/cancel actions, and dashboards.
 - `apps/api`: Chat endpoints, ingestion endpoints, storage logic, and optional memory adapter interface.
-- `packages/llm-sdk`: Lightweight wrapper around model calls and logging emission.
+- `packages/llm_sdk`: Lightweight wrapper around model calls and logging emission.
 - `packages/shared`: Shared types, validation, constants, and helpers.
 - `packages/database`: Schema, migrations, DB client, and data access helpers.
 - `docs`: Written architecture and design decisions.

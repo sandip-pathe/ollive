@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   api:
     build:
@@ -10,6 +9,9 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AUTH_BYPASS=${AUTH_BYPASS:-true}
+      - AUTH_INVITE_CODE=${AUTH_INVITE_CODE:-dev}
+      - AUTH_SESSION_SECRET=${AUTH_SESSION_SECRET:-dev-session-secret}
     depends_on:
       - postgres
       - redis
@@ -29,6 +31,22 @@ services:
     ports:
       - "6380:6379"
 
+  web:
+    image: node:22-alpine
+    working_dir: /app/apps/web
+    command: sh -c "test -d node_modules/next || npm install --no-audit --no-fund --package-lock=false; npm run dev -- --hostname 0.0.0.0 --port 3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE=http://localhost:8001
+      - NEXT_PUBLIC_AUTH_BYPASS=true
+      - NEXT_TELEMETRY_DISABLED=1
+    volumes:
+      - .:/app
+      - web_node_modules:/app/apps/web/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
   worker:
     build:
       context: .
@@ -42,3 +60,4 @@ services:
 
 volumes:
   pgdata:
+  web_node_modules:

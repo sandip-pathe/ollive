@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ollive Web
 
-## Getting Started
+This is the Next.js frontend for Ollive.
 
-First, run the development server:
+## Responsibilities
+
+- Chat UI and conversation list.
+- Local auth gate with optional development bypass.
+- Markdown rendering for user and assistant messages.
+- Inspect panel for metrics, traces, raw request/response details, runtime events, and evidence packets.
+- Agent Risk & Insurability Evidence Packet UI.
+
+## Local Development
+
+From the repository root, the simplest path is Docker Compose:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+docker compose up -d --build web api postgres redis worker
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+For frontend-only development:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cd apps/web
+npm install
+npm run dev
+```
 
-## Learn More
+The frontend expects:
 
-To learn more about Next.js, take a look at the following resources:
+- `NEXT_PUBLIC_API_BASE` - API base URL, usually `http://localhost:8001`.
+- `NEXT_PUBLIC_AUTH_BYPASS` - set to `true` for local bypass only.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Checks
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npx tsc --noEmit --pretty false
+```
 
-## Deploy on Vercel
+```bash
+npx eslint
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Targeted checks for the inspect/chat surface:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npx eslint components/chat/markdown-message.tsx components/chat/assistant-message.tsx components/chat/user-message.tsx components/chat/chat-layout.tsx components/inspect/inspect-panel.tsx components/inspect/inspect-tabs.tsx components/inspect/evidence-packet.tsx components/inspect/ops-review.tsx components/auth/auth-gate.tsx app/lib/api.ts app/lib/auth.ts
+```

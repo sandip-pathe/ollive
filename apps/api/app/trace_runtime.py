@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 
 from . import db
 from .auth import get_current_user, require_current_user
+from .risk_classifier import generate_evidence_packet, get_evidence_packet, mark_evidence_packet_error
 
 router = APIRouter(prefix="/api")
 
@@ -269,6 +270,48 @@ async def get_trace(trace_id: UUID):
             "inference_log": dict(inference_log) if inference_log else None,
             "extracted_metadata": [dict(row) for row in extracted_metadata],
         }
+
+
+@router.get("/traces/{trace_id}/evidence-packet", dependencies=[Depends(require_current_user)])
+async def get_trace_evidence_packet(trace_id: UUID):
+    current_user = get_current_user()
+    async with _get_pool().acquire() as conn:
+        trace = await conn.fetchrow(
+            """
+            SELECT t.trace_id
+            FROM traces t
+            JOIN conversations c ON c.id = t.conversation_id
+            WHERE t.trace_id=$1 AND c.actor_id=$2
+            """,
+            trace_id,
+            current_user.id,
+        )
+        if not trace:
+            raise HTTPException(404, "Trace not found")
+        return await get_evidence_packet(conn, trace_id)
+
+
+@router.post("/traces/{trace_id}/evidence-packet/recompute", dependencies=[Depends(require_current_user)])
+async def recompute_trace_evidence_packet(trace_id: UUID):
+    current_user = get_current_user()
+    async with _get_pool().acquire() as conn:
+        trace = await conn.fetchrow(
+            """
+            SELECT t.trace_id
+            FROM traces t
+            JOIN conversations c ON c.id = t.conversation_id
+            WHERE t.trace_id=$1 AND c.actor_id=$2
+            """,
+            trace_id,
+            current_user.id,
+        )
+        if not trace:
+            raise HTTPException(404, "Trace not found")
+        try:
+            return await generate_evidence_packet(conn, trace_id)
+        except Exception as exc:
+            await mark_evidence_packet_error(conn, trace_id, f"Evidence packet generation failed: {exc}")
+            return await get_evidence_packet(conn, trace_id)
 
 
 @router.get("/traces/{trace_id}/events/stream", dependencies=[Depends(require_current_user)])

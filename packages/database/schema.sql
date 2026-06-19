@@ -127,6 +127,58 @@ CREATE TABLE IF NOT EXISTS extracted_metadata (
 );
 CREATE INDEX IF NOT EXISTS idx_extracted_metadata_key ON extracted_metadata(key);
 
+-- agent insurance observability
+CREATE TABLE IF NOT EXISTS agent_policy_rules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  policy_pack TEXT NOT NULL,
+  rule_key TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  risk_category TEXT NOT NULL,
+  default_severity TEXT NOT NULL,
+  default_owner TEXT NOT NULL,
+  match_strategy TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(policy_pack, rule_key)
+);
+
+CREATE TABLE IF NOT EXISTS agent_risk_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  trace_id UUID NOT NULL REFERENCES traces(trace_id) ON DELETE CASCADE,
+  conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+  message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+  policy_rule_id UUID REFERENCES agent_policy_rules(id) ON DELETE SET NULL,
+  policy_pack TEXT NOT NULL,
+  risk_category TEXT NOT NULL,
+  status TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  confidence NUMERIC(5, 4) NOT NULL,
+  owner TEXT NOT NULL,
+  title TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  evidence_quote TEXT,
+  evidence_source TEXT NOT NULL,
+  remediation TEXT NOT NULL,
+  classifier_version TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agent_risk_events_trace_id ON agent_risk_events(trace_id);
+CREATE INDEX IF NOT EXISTS idx_agent_risk_events_category ON agent_risk_events(risk_category);
+CREATE INDEX IF NOT EXISTS idx_agent_risk_events_status ON agent_risk_events(status);
+
+CREATE TABLE IF NOT EXISTS evidence_packets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  trace_id UUID NOT NULL REFERENCES traces(trace_id) ON DELETE CASCADE,
+  conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+  status TEXT NOT NULL,
+  insurability_posture TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  packet_json JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_packets_trace_id ON evidence_packets(trace_id);
+
 -- memories (optional)
 CREATE TABLE IF NOT EXISTS memories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

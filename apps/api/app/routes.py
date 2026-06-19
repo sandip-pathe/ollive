@@ -9,6 +9,7 @@ import os
 from . import db
 from .auth import get_current_user, require_current_user
 from .trace_runtime import create_trace, emit_trace_event, finalize_trace, now_ms
+from .risk_classifier import mark_evidence_packet_pending, schedule_evidence_packet
 from packages.shared.redaction import redact_text, redact_preview
 from packages.llm_sdk.openai_stream import stream_chat
 
@@ -221,6 +222,13 @@ async def stream_message(conv_id: UUID, payload: MessageCreate):
         async with _get_pool().acquire() as conn:
             await emit_trace_event(conn, trace_id, event_type, event_payload)
 
+    async def queue_evidence_packet(conn):
+        try:
+            await mark_evidence_packet_pending(conn, trace_id)
+            schedule_evidence_packet(trace_id)
+        except Exception:
+            pass
+
     async def event_stream():
         nonlocal assistant_text, first_token_ms, chunk_count, final_status, finish_reason
         try:
@@ -310,6 +318,7 @@ async def stream_message(conv_id: UUID, payload: MessageCreate):
                     assistant_msg['id'],
                     infer['id'],
                 )
+                await queue_evidence_packet(conn)
             yield f"data: {json.dumps({'type': 'done', 'message_id': str(assistant_msg['id'])})}\n\n"
         except asyncio.CancelledError:
             final_status = 'cancelled'
@@ -375,6 +384,7 @@ async def stream_message(conv_id: UUID, payload: MessageCreate):
                     assistant_msg['id'],
                     infer['id'],
                 )
+                await queue_evidence_packet(conn)
             raise
         except Exception as exc:
             final_status = 'error'
@@ -438,6 +448,7 @@ async def stream_message(conv_id: UUID, payload: MessageCreate):
                     assistant_msg['id'],
                     infer['id'],
                 )
+                await queue_evidence_packet(conn)
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
             return
 

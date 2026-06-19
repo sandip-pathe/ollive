@@ -2,12 +2,18 @@
 
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { Trace as ApiTrace } from "@/app/lib/api";
+import type { EvidencePacketResponse, MetricsOverview, Trace as ApiTrace } from "@/app/lib/api";
+import { EvidencePacketPanel } from "./evidence-packet";
+import { OpsReview } from "./ops-review";
 import { RequestCard } from "./request-card";
 
 type InspectTabsProps = {
   traces: ApiTrace[];
   selectedTrace: ApiTrace | null;
+  metrics: MetricsOverview | null;
+  evidencePacket: EvidencePacketResponse | null;
+  onRecomputePacket?: () => void;
+  recomputingPacket?: boolean;
   summary: Array<{ label: string; value: string; hint: string }>;
   sections: {
     events: string[];
@@ -21,13 +27,27 @@ type InspectTabsProps = {
 };
 
 export function InspectTabs({
+  traces,
   selectedTrace,
+  metrics,
+  evidencePacket,
+  onRecomputePacket,
+  recomputingPacket,
   summary,
   sections,
 }: InspectTabsProps) {
   return (
     <ScrollArea className="flex-1 min-h-0 w-full overflow-hidden">
       <div className="mx-auto flex w-full max-w-none flex-col gap-4 px-3 py-3 sm:px-4 lg:px-5 lg:py-4">
+        <EvidencePacketPanel
+          packet={evidencePacket}
+          selectedTrace={selectedTrace}
+          onRecompute={onRecomputePacket}
+          recomputing={recomputingPacket}
+        />
+
+        <OpsReview metrics={metrics} traces={traces} />
+
         <section className="rounded-[28px] border border-[#ddd6c6] bg-[#f6f3ea] px-4 py-4 shadow-[0_8px_24px_rgba(55,46,28,0.04)] sm:px-5">
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(160px,1fr))]">
             {summary.map((item) => (

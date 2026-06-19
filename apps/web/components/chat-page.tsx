@@ -74,7 +74,7 @@ export default function ChatPage() {
         setMessages([]);
       }
     } catch (error) {
-      console.error("Failed to load conversations", error);
+      console.debug("Failed to load conversations", error);
       setConversations([]);
       setSelectedConversationId("");
       setMessages([]);
@@ -93,7 +93,7 @@ export default function ChatPage() {
       setSelectedConversationId(detail.conversation.id);
       setMessages(detail.messages.map(toChatMessage));
     } catch (error) {
-      console.error("Failed to load conversation", error);
+      console.debug("Failed to load conversation", error);
       setMessages([]);
     }
   }
@@ -120,7 +120,7 @@ export default function ChatPage() {
           setMessages([]);
         }
       } catch (error) {
-        console.error("Failed to load conversations", error);
+        console.debug("Failed to load conversations", error);
         if (mounted) {
           setConversations([]);
           setSelectedConversationId("");
@@ -240,7 +240,7 @@ export default function ChatPage() {
       if (error instanceof DOMException && error.name === "AbortError") {
         return;
       }
-      console.error("Streaming failed", error);
+      console.debug("Streaming failed", error);
       await loadConversation(conversationId);
       window.dispatchEvent(
         new CustomEvent("ollive:trace-refresh", {

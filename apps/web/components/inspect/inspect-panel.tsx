@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { API_BASE, apiFetch } from "@/app/lib/api";
 import { getStoredAuthToken } from "@/app/lib/auth";
+import { Button } from "@/components/ui/button";
 import type {
+  EvidencePacketResponse,
   MetricsOverview,
   Trace as ApiTrace,
   TraceDetail,
@@ -61,15 +64,17 @@ function metadataToLines(entries: Array<{ key: string; value?: string | null }> 
 
 export function InspectPanel({
   sessionId = "",
-  onClose: _onClose,
+  onClose,
 }: {
   sessionId?: string;
   onClose?: () => void;
 }) {
   const [traceList, setTraceList] = useState<ApiTrace[]>([]);
   const [traceDetail, setTraceDetail] = useState<TraceDetail | null>(null);
+  const [evidencePacket, setEvidencePacket] = useState<EvidencePacketResponse | null>(null);
   const [metrics, setMetrics] = useState<MetricsOverview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [recomputingPacket, setRecomputingPacket] = useState(false);
 
   const selectedTrace =
     traceList.find(
@@ -97,16 +102,19 @@ export function InspectPanel({
           traces[0] ||
           null;
         if (target) {
-          const detail = await apiFetch<TraceDetail>(
-            `/api/traces/${target.trace_id}`,
-          );
+          const [detail, packet] = await Promise.all([
+            apiFetch<TraceDetail>(`/api/traces/${target.trace_id}`),
+            apiFetch<EvidencePacketResponse>(`/api/traces/${target.trace_id}/evidence-packet`),
+          ]);
           if (!mounted) return;
           setTraceDetail(detail);
+          setEvidencePacket(packet);
         } else {
           setTraceDetail(null);
+          setEvidencePacket(null);
         }
       } catch (error) {
-        console.error("Failed to load inspect dashboard", error);
+        console.debug("Failed to load inspect dashboard", error);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -144,14 +152,19 @@ export function InspectPanel({
             traces[0] ||
             null;
           if (target) {
-            const refreshed = await apiFetch<TraceDetail>(
-              `/api/traces/${target.trace_id}`,
-            );
+            const [refreshed, packet] = await Promise.all([
+              apiFetch<TraceDetail>(`/api/traces/${target.trace_id}`),
+              apiFetch<EvidencePacketResponse>(`/api/traces/${target.trace_id}/evidence-packet`),
+            ]);
             if (cancelled) return;
             setTraceDetail(refreshed);
+            setEvidencePacket(packet);
+          } else {
+            setTraceDetail(null);
+            setEvidencePacket(null);
           }
         } catch (error) {
-          console.error("Failed to refresh inspect dashboard", error);
+          console.debug("Failed to refresh inspect dashboard", error);
         }
       })();
     };
@@ -164,24 +177,32 @@ export function InspectPanel({
   }, [sessionId]);
 
   useEffect(() => {
-    if (!selectedTrace?.trace_id) {
-      setTraceDetail(null);
-      return;
-    }
-
     let cancelled = false;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const refreshDetail = async () => {
+      if (!selectedTrace?.trace_id) {
+        if (!cancelled) {
+          setTraceDetail(null);
+          setEvidencePacket(null);
+        }
+        return;
+      }
+
       try {
         const detail = await apiFetch<TraceDetail>(
           `/api/traces/${selectedTrace.trace_id}`,
         );
+        const packet = await apiFetch<EvidencePacketResponse>(
+          `/api/traces/${selectedTrace.trace_id}/evidence-packet`,
+        );
         if (cancelled) return;
         setTraceDetail(detail);
+        setEvidencePacket(packet);
 
         const traceStatus = detail.trace?.status;
         const completedAt = detail.trace?.completed_at;
+        const packetPending = packet.packet?.status === "pending";
         const hasMetadata = Boolean(
           detail.inference_log?.id &&
             ((detail.extracted_metadata && detail.extracted_metadata.length > 0) ||
@@ -191,6 +212,7 @@ export function InspectPanel({
         const shouldKeepPolling =
           traceStatus === "queued" ||
           traceStatus === "streaming" ||
+          packetPending ||
           (!hasMetadata && (!completedAt || Date.now() - completedAt < terminalGraceMs));
 
         if (shouldKeepPolling) {
@@ -199,7 +221,7 @@ export function InspectPanel({
           }, 1500);
         }
       } catch (error) {
-        console.error("Failed to load trace detail", error);
+        console.debug("Failed to load trace detail", error);
         if (!cancelled) {
           timeoutId = setTimeout(() => {
             void refreshDetail();
@@ -217,6 +239,22 @@ export function InspectPanel({
       }
     };
   }, [selectedTrace?.trace_id]);
+
+  const recomputeEvidencePacket = async () => {
+    if (!selectedTrace?.trace_id) return;
+    setRecomputingPacket(true);
+    try {
+      const packet = await apiFetch<EvidencePacketResponse>(
+        `/api/traces/${selectedTrace.trace_id}/evidence-packet/recompute`,
+        { method: "POST" },
+      );
+      setEvidencePacket(packet);
+    } catch (error) {
+      console.debug("Failed to recompute evidence packet", error);
+    } finally {
+      setRecomputingPacket(false);
+    }
+  };
 
   useEffect(() => {
     if (!selectedTrace?.trace_id) return;
@@ -238,7 +276,7 @@ export function InspectPanel({
           };
         });
       } catch (error) {
-        console.error("Failed to parse live trace event", error);
+        console.debug("Failed to parse live trace event", error);
       }
     };
     source.onerror = () => {
@@ -293,6 +331,7 @@ export function InspectPanel({
       : ["No runtime events yet."],
     tokens: trace
       ? [
+          `Token mix: ${formatTokens(trace.prompt_tokens, trace.completion_tokens)}`,
           `Prompt tokens: ${trace.prompt_tokens ?? 0}`,
           `Completion tokens: ${trace.completion_tokens ?? 0}`,
           `Total tokens: ${totalTokens}`,
@@ -341,6 +380,19 @@ export function InspectPanel({
         <div className="px-3 py-2 text-[11px] uppercase tracking-[0.18em] text-[#676057]">
           Trace evidence console
         </div>
+        {onClose ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-[#6f685e]"
+            onClick={onClose}
+            aria-label="Close inspect panel"
+            title="Close inspect panel"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        ) : null}
       </header>
       <div className="flex flex-1 w-full min-w-0 min-h-0 overflow-hidden">
         {loading ? (
@@ -351,6 +403,10 @@ export function InspectPanel({
           <InspectTabs
             traces={traceList}
             selectedTrace={trace}
+            metrics={metrics}
+            evidencePacket={evidencePacket}
+            onRecomputePacket={recomputeEvidencePacket}
+            recomputingPacket={recomputingPacket}
             summary={summary}
             sections={sections}
           />

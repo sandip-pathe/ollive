@@ -2,12 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 
-export function InspectHeader({
-  sessionId,
-}: {
-  sessionId: string;
-  onClose?: () => void;
-}) {
+export function InspectHeader() {
   return (
     <header className="flex w-full shrink-0 min-w-0 items-start justify-between gap-4 border-b border-[#ddd8cb] bg-[#f6f4ec] px-5 py-4">
       <div className="min-w-0 space-y-2">

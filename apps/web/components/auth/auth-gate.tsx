@@ -6,25 +6,27 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { API_BASE } from "@/app/lib/api";
-import { clearStoredAuthSession, getStoredAuthSession, setStoredAuthSession } from "@/app/lib/auth";
+import { AUTH_BYPASS, clearStoredAuthSession, getStoredAuthSession, setStoredAuthSession } from "@/app/lib/auth";
 
 type AuthState = "checking" | "authenticated" | "unauthenticated";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const [authState, setAuthState] = useState<AuthState>("checking");
+  const [authState, setAuthState] = useState<AuthState>(AUTH_BYPASS ? "authenticated" : "checking");
   const [inviteCode, setInviteCode] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const session = getStoredAuthSession();
-    if (!session) {
-      setAuthState("unauthenticated");
-      return;
-    }
+    if (AUTH_BYPASS) return;
 
     void (async () => {
+      const session = getStoredAuthSession();
+      if (!session) {
+        setAuthState("unauthenticated");
+        return;
+      }
+
       try {
         const response = await fetch(`${API_BASE}/api/auth/me`, {
           headers: { Authorization: `Bearer ${session.token}` },

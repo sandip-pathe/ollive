@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatHeader } from "./chat-header";
 import { MessageList } from "./message-list";
 import { ChatInput } from "./chat-input";
@@ -76,7 +76,7 @@ export function ChatLayout({
     messages[messages.length - 1].role === "assistant" &&
     messages[messages.length - 1].content.trim().length === 0;
 
-  async function loadConversation(conversationId: string) {
+  const loadConversation = useCallback(async (conversationId: string) => {
     const detail = await apiFetch<{
       conversation: ConversationSummary;
       messages: ApiMessage[];
@@ -85,7 +85,7 @@ export function ChatLayout({
     setSelectedConversationTitle(detail.conversation.title || "New chat");
     setMessages(detail.messages.map(toChatMessage));
     return detail.conversation;
-  }
+  }, []);
 
   async function refreshConversations(preferredConversationId?: string) {
     setLoadingConversations(true);
@@ -101,7 +101,7 @@ export function ChatLayout({
         setMessages([]);
       }
     } catch (error) {
-      console.error("Failed to load conversations", error);
+      console.debug("Failed to load conversations", error);
       setConversations([]);
       setSelectedConversationId(null);
       setSelectedConversationTitle("New chat");
@@ -128,7 +128,7 @@ export function ChatLayout({
           setMessages([]);
         }
       } catch (error) {
-        console.error("Failed to load conversations", error);
+        console.debug("Failed to load conversations", error);
         if (mounted) {
           setConversations([]);
           setSelectedConversationId(null);
@@ -143,11 +143,11 @@ export function ChatLayout({
       mounted = false;
       abortRef.current?.abort();
     };
-  }, []);
+  }, [loadConversation]);
 
-  function voidLoadConversation(id: string) {
+  const voidLoadConversation = useCallback((id: string) => {
     void loadConversation(id);
-  }
+  }, [loadConversation]);
 
   async function ensureConversationId(prompt: string) {
     if (selectedConversationId) return selectedConversationId;
@@ -177,7 +177,7 @@ export function ChatLayout({
         method: "POST",
       });
     } catch (error) {
-      console.error("Failed to pause conversation", error);
+      console.debug("Failed to pause conversation", error);
     } finally {
       abortRef.current?.abort();
     }
@@ -269,7 +269,7 @@ export function ChatLayout({
         await refreshConversations(convId);
         return;
       }
-      console.error("Streaming failed", error);
+      console.debug("Streaming failed", error);
       await loadConversation(convId);
     } finally {
       activeConversationIdRef.current = null;
@@ -278,7 +278,7 @@ export function ChatLayout({
     }
   }
 
-  function handleNewChat() {
+  const handleNewChat = useCallback(() => {
     abortRef.current?.abort();
     activeConversationIdRef.current = null;
     setSelectedConversationId(null);
@@ -286,7 +286,7 @@ export function ChatLayout({
     setMessages([]);
     setComposer("");
     setStreaming(false);
-  }
+  }, []);
 
   useEffect(() => {
     if (!registerShellHandlers) return;
@@ -302,6 +302,8 @@ export function ChatLayout({
     selectedConversationId,
     loadingConversations,
     registerShellHandlers,
+    handleNewChat,
+    voidLoadConversation,
   ]);
 
   return (

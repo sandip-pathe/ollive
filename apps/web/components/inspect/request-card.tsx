@@ -32,6 +32,16 @@ function metadataValue(value: unknown) {
   }
 }
 
+function payloadNumber(payload: TraceEventLike["payload"] | undefined, key: string) {
+  const value = payload?.[key];
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
 function eventTitle(type?: string) {
   switch (type) {
     case "request_started":
@@ -97,22 +107,23 @@ function summarizeEvents(events: TraceEventLike[] | undefined) {
     if (ev.type === 'chunk') {
       const last = out[out.length - 1];
       if (last && last.type === 'streaming') {
-        // accumulate
-        const prevCount = (last.payload && (last.payload as any).chunks_count) || 0;
-        const prevTotal = (last.payload && (last.payload as any).total_chunk_chars) || 0;
-        const thisLen = ev.payload && (ev.payload as any).chunk_length ? Number((ev.payload as any).chunk_length) : 0;
-        (last.payload as any).chunks_count = prevCount + 1;
-        (last.payload as any).total_chunk_chars = prevTotal + thisLen;
+        const prevCount = payloadNumber(last.payload, "chunks_count");
+        const prevTotal = payloadNumber(last.payload, "total_chunk_chars");
+        const thisLen = payloadNumber(ev.payload, "chunk_length");
+        last.payload = {
+          ...(last.payload || {}),
+          chunks_count: prevCount + 1,
+          total_chunk_chars: prevTotal + thisLen,
+        };
         if (!last.duration_ms) last.duration_ms = 0;
         last.duration_ms = (last.duration_ms || 0) + (ev.duration_ms || 0);
       } else {
-        // create synthetic streaming event
         out.push({
           id: ev.id,
           type: 'streaming',
-          timestamp: (ev as any).timestamp,
+          timestamp: ev.timestamp,
           duration_ms: ev.duration_ms,
-          payload: { chunks_count: 1, total_chunk_chars: ev.payload && (ev.payload as any).chunk_length ? Number((ev.payload as any).chunk_length) : 0 },
+          payload: { chunks_count: 1, total_chunk_chars: payloadNumber(ev.payload, "chunk_length") },
         } as TraceEventLike);
       }
     } else {
@@ -152,7 +163,7 @@ export function RequestCard({ trace }: { trace: ApiTrace }) {
         setLatencySamples(latencies.slice(-20));
         setThroughputSamples(through.slice(-20));
       } catch (err) {
-        console.error("Failed to load trace detail", err);
+        console.debug("Failed to load trace detail", err);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -290,7 +301,7 @@ export function RequestCard({ trace }: { trace: ApiTrace }) {
                       <div key={event.id} className="rounded-lg border border-[#e7dfcf] bg-white px-3 py-2 text-sm text-[#4b443a]">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="font-medium text-[#2f2d28]">{eventTitle(event.type)}</span>
-                          <span className="text-xs text-[#8c8478]">{event.timestamp ? new Date(event.timestamp as any).toLocaleString() : "-"}</span>
+                          <span className="text-xs text-[#8c8478]">{event.timestamp ? new Date(event.timestamp).toLocaleString() : "-"}</span>
                         </div>
                         <div className="mt-1 text-xs leading-5 text-[#6f685e]">
                           {eventSummary(event)}

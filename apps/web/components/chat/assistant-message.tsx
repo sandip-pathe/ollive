@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { ChevronRight } from "lucide-react";
+import { MarkdownMessage } from "./markdown-message";
 
 type AssistantMessageProps = {
   content: string;
@@ -20,9 +21,7 @@ export function AssistantMessage({ content, meta }: AssistantMessageProps) {
           <ChevronRight className="h-3.5 w-3.5" />
         </p>
       ) : null}
-      <p className="whitespace-pre-wrap break-words text-[16px] leading-8 text-[#2b2b2b]">
-        {content}
-      </p>
+      <MarkdownMessage content={content} />
     </motion.article>
   );
 }

@@ -1,20 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronsUpDown, LogOut } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { clearStoredAuthSession, getStoredAuthSession } from "@/app/lib/auth";
 
 export function UserProfile() {
-  const [displayName, setDisplayName] = useState("Guest");
-
-  useEffect(() => {
+  const [displayName] = useState(() => {
     const session = getStoredAuthSession();
-    if (session?.displayName) {
-      setDisplayName(session.displayName);
-    }
-  }, []);
+    return session?.displayName || "Guest";
+  });
 
   function handleLogout() {
     clearStoredAuthSession();
