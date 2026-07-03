@@ -25,6 +25,7 @@ It has:
 - run-level evidence packet generation
 - first-party TypeScript SDK in `packages/ollive-js`
 - V2 deterministic risk engine with optional BYOK AI review
+- self-hosting, adapter, policy-pack, contributing, CI, and release checklist docs
 
 Milestone 1 added the product and architecture contract for the next version:
 
@@ -62,6 +63,7 @@ The current system is suitable for demo, design partner feedback, and proof-of-w
 
 - Published SDK package, retries, and broader framework adapters.
 - LangSmith and OpenTelemetry adapters.
+- First-party Python SDK.
 - Durable queue for evidence packet generation and recompute jobs.
 - Multi-tenant auth, access control, and audit logs.
 - Retention and redaction policy for raw payloads.

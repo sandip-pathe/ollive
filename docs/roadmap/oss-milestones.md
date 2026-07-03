@@ -209,6 +209,8 @@ Manual review:
 
 ## Milestone 6: OSS Distribution And Adapter Layer
 
+Status: implemented as docs, CI, and release checklist.
+
 Goal: make Ollive useful without Sandip, without a hosted Ollive service, and
 without requiring any one observability vendor.
 

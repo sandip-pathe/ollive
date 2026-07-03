@@ -18,6 +18,9 @@ This package contains the Postgres schema and database notes for Ollive.
 - `trace_events`
 - `inference_logs`
 - `extracted_metadata`
+- `agent_runs`
+- `agent_run_steps`
+- `agent_run_sources`
 - `agent_policy_rules`
 - `agent_risk_events`
 - `evidence_packets`

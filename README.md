@@ -194,7 +194,11 @@ Read more:
 - [AgentRun schema](./docs/architecture/agent-run-schema.md)
 - [JSON AgentRun ingest](./docs/integrations/json-ingest.md)
 - [JavaScript SDK integration](./docs/integrations/js-sdk.md)
+- [Adapter strategy](./docs/integrations/adapters.md)
 - [Risk Engine V2](./docs/risk/risk-engine-v2.md)
+- [Policy packs](./docs/risk/policy-packs.md)
+- [Self-hosting](./docs/distribution/self-hosting.md)
+- [Release checklist](./docs/release-checklist.md)
 - [OSS milestone roadmap](./docs/roadmap/oss-milestones.md)
 - [Schema notes](./docs/schema.md)
 - [Tradeoffs](./docs/tradeoffs.md)
@@ -210,7 +214,7 @@ Read more:
 - `inference_logs` - SDK-friendly request logs.
 - `extracted_metadata` - worker-extracted key/value metadata.
 - `agent_policy_rules` - the active insurance risk policy pack.
-- `agent_risk_events` - trace-level risk findings with severity, owner, evidence, and remediation.
+- `agent_risk_events` - run/trace risk findings with severity, owner, evidence, provenance, and remediation.
 - `evidence_packets` - packet status, insurability posture, summary, audit trail, and failure nodes.
 - `memories` - optional future memory layer.
 

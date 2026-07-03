@@ -46,8 +46,8 @@ pipeline maps into the future one.
 | Risk engine | Implemented as deterministic classifier | Evaluate AgentRun evidence using versioned policy packs. |
 | AI analyzer | Implemented as opt-in V2 hook | Optional BYOK reviewer for subtle risk and intent classification. |
 | Evidence packets | Implemented for traces | Generate run-level audit packet with findings and missing evidence. |
-| Dashboard | Implemented around chat traces | Lead with risk posture, evidence completeness, and stakeholder views. |
-| Adapters | Not implemented | Import from LangSmith, OpenTelemetry, and custom logs. |
+| Dashboard | Implemented as run-first Inspect view | Lead with risk posture, evidence completeness, and stakeholder views. |
+| Adapters | Strategy documented | Import from LangSmith, OpenTelemetry, and custom logs. |
 
 ## Source-Agnostic Ingest
 
