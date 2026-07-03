@@ -22,6 +22,7 @@ It has:
 - normalized `AgentRun` tables
 - JSON `/v1/runs` collector API
 - run-level evidence packet generation
+- first-party TypeScript SDK in `packages/ollive-js`
 
 Milestone 1 added the product and architecture contract for the next version:
 
@@ -30,7 +31,8 @@ Milestone 1 added the product and architecture contract for the next version:
 - current chat traces are documented as the first AgentRun evidence source.
 - LangSmith, OpenTelemetry, custom logs, JSON ingest, and native SDKs are positioned as optional inputs.
 
-Milestone 2 adds JSON ingest. Native SDKs and third-party adapters are still pending.
+Milestone 2 adds JSON ingest. Milestone 3 adds the first-party TypeScript SDK.
+Third-party adapters are still pending.
 
 ## Claim Boundary
 
@@ -48,7 +50,7 @@ Do not claim yet:
 
 Also do not claim yet:
 
-> Ollive has production-ready external agent SDK ingestion.
+> Ollive has a published, production-hardened external agent SDK ecosystem.
 
 > Ollive has production-ready LangSmith or OpenTelemetry adapters.
 
@@ -56,7 +58,7 @@ The current system is suitable for demo, design partner feedback, and proof-of-w
 
 ## Production Blockers
 
-- External SDK ingestion for arbitrary agent workflows.
+- Published SDK package, retries, and broader framework adapters.
 - LangSmith and OpenTelemetry adapters.
 - Durable queue for evidence packet generation and recompute jobs.
 - Multi-tenant auth, access control, and audit logs.

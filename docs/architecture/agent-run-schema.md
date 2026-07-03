@@ -6,8 +6,9 @@ It represents one attempt by an AI agent to complete a task. A chat response is
 one kind of agent run. A background workflow, tool-using agent, support agent,
 claims agent, coding agent, or approval agent should fit the same shape.
 
-This document is the Milestone 1 contract. It is not fully implemented in the
-database yet.
+This document started as the Milestone 1 contract. Milestone 2 added the
+database-backed collector, and Milestone 3 added the TypeScript SDK that sends
+this shape to Ollive.
 
 ## Design Goals
 
@@ -252,12 +253,17 @@ That is acceptable for the MVP, but packets must surface these gaps.
 }
 ```
 
-## Non-Goals For Milestone 1
+## Implementation Status
 
-- No database migration for `agent_runs` yet.
-- No new public collector endpoint yet.
-- No JS or Python SDK yet.
+- `agent_runs`, `agent_run_steps`, and `agent_run_sources` are implemented in Postgres.
+- `POST /v1/runs` accepts normalized JSON payloads.
+- `POST /v1/runs/{run_id}/events` appends run steps.
+- `packages/ollive-js` records model calls, tool calls, human handoff, external actions, and terminal outcomes.
+- Existing chat traces are projected into `AgentRun`.
+- Evidence packets can be generated from normalized runs.
+
+## Remaining Non-Goals
+
 - No LangSmith or OpenTelemetry adapter yet.
 - No AI-based risk analyzer yet.
-
-Milestone 1 only creates the contract that those features will implement.
+- No published npm package yet.

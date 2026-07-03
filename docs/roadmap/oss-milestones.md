@@ -9,6 +9,8 @@ throwing away the working trace, risk, packet, and dashboard code.
 
 ## Milestone 1: Product Reframe And Canonical Schema
 
+Status: complete in commit `dec34fe`.
+
 Goal: make `AgentRun` the canonical product object and make chat the first
 example integration, not the product boundary.
 
@@ -42,6 +44,8 @@ Manual review:
 - confirm "chat-as-agent MVP" is still the safe current claim
 
 ## Milestone 2: Collector API And JSON Ingest
+
+Status: complete in commit `2e510b9`.
 
 Goal: let any backend send agent runs to Ollive without using the chat UI.
 
@@ -79,6 +83,8 @@ Manual review:
 - confirm packets differ honestly
 
 ## Milestone 3: JavaScript SDK
+
+Status: implemented as local package in `packages/ollive-js`.
 
 Goal: make first integration fast enough that a developer gets a packet in under
 five minutes.

@@ -1,0 +1,35 @@
+{
+  "name": "@ollive/risk-layer",
+  "version": "0.1.0",
+  "description": "Open-source risk layer client for AI-agent observability.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit --pretty false",
+    "typecheck:examples": "tsc -p tsconfig.examples.json --pretty false"
+  },
+  "keywords": [
+    "ai-agents",
+    "observability",
+    "risk",
+    "insurance",
+    "audit"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

@@ -5,6 +5,10 @@ Milestone 2 adds a source-agnostic JSON collector API for `AgentRun`.
 The endpoint is intentionally plain HTTP so any backend, script, framework, or
 observability adapter can send runs without using the built-in chat UI.
 
+If you are instrumenting a JavaScript or TypeScript agent, use the first-party
+SDK in [JavaScript SDK integration](./js-sdk.md). The SDK sends the same JSON
+shape to the endpoints documented here.
+
 ## Auth
 
 Local development works without a collector token.

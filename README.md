@@ -14,6 +14,8 @@ Current shipped MVP:
 
 - Streams multi-turn chat through a FastAPI backend and OpenAI-compatible wrapper.
 - Persists conversations, messages, traces, trace events, inference logs, and extracted metadata in Postgres.
+- Accepts normalized `AgentRun` JSON through `/v1/runs`.
+- Includes a first-party TypeScript SDK in `packages/ollive-js` for instrumenting agent backends.
 - Shows live inspection for request lifecycle, latency, token/cost evidence, raw request/response payloads, and event timelines.
 - Generates an Agent Risk & Insurability Evidence Packet for a selected trace.
 - Classifies agentic risk with the `agentic_insurance_v1` policy pack.
@@ -28,6 +30,47 @@ Milestone 1 target direction:
 - Chat is the first example integration, not the long-term product boundary.
 - External agent SDKs, JSON ingest, LangSmith import, and OpenTelemetry import should all normalize into the same run model.
 - Evidence packets should be generated from normalized agent evidence and should call out missing evidence instead of pretending unknown runs are safe.
+
+## Instrument An Agent
+
+The lowest-friction path is the JavaScript SDK:
+
+```ts
+import { createOlliveClient } from "@ollive/risk-layer";
+
+const ollive = createOlliveClient({
+  endpoint: process.env.OLLIVE_ENDPOINT ?? "http://localhost:8001",
+  token: process.env.OLLIVE_INGEST_TOKEN,
+  defaultAgent: "claims-support-agent",
+  defaultAuthority: {
+    scope: "informational_support",
+    disallowed_actions: ["approve_claim", "deny_claim", "guarantee_payout"],
+    requires_handoff: ["coverage_decision"],
+  },
+});
+
+const run = await ollive.startRun({
+  task: {
+    type: "claim_question",
+    input: "Will this claim be approved?",
+  },
+});
+
+await run.modelCall({
+  provider: "openai",
+  model: "gpt-4o-mini",
+  output: { text: "I can explain the review process, but cannot approve it." },
+});
+
+await run.end({
+  status: "success",
+  summary: "Answered with process guidance only.",
+  side_effects: [],
+});
+```
+
+The collector generates the run-level evidence packet and risk findings from
+that evidence.
 
 ## Screenshots
 
@@ -105,6 +148,7 @@ Ollive is a small monorepo:
 
 - `apps/web` - Next.js app router UI for chat, auth, and inspect views.
 - `apps/api` - FastAPI service for auth, chat streaming, ingestion, metrics, traces, and evidence packets.
+- `packages/ollive-js` - TypeScript SDK for recording normalized agent runs.
 - `packages/llm_sdk` - OpenAI streaming wrapper and non-blocking ingestion helper.
 - `packages/shared` - redaction utilities and shared helpers.
 - `packages/database` - SQL schema and database notes.
@@ -147,6 +191,7 @@ Read more:
 - [Agent risk layer architecture](./docs/architecture/agent-risk-layer.md)
 - [AgentRun schema](./docs/architecture/agent-run-schema.md)
 - [JSON AgentRun ingest](./docs/integrations/json-ingest.md)
+- [JavaScript SDK integration](./docs/integrations/js-sdk.md)
 - [OSS milestone roadmap](./docs/roadmap/oss-milestones.md)
 - [Schema notes](./docs/schema.md)
 - [Tradeoffs](./docs/tradeoffs.md)
@@ -180,6 +225,11 @@ npx tsc --noEmit --pretty false
 ```
 
 ```bash
+cd packages/ollive-js
+npm run typecheck
+```
+
+```bash
 cd apps/web
 npx eslint components/chat/markdown-message.tsx components/chat/assistant-message.tsx components/chat/user-message.tsx components/chat/chat-layout.tsx components/inspect/inspect-panel.tsx components/inspect/inspect-tabs.tsx components/inspect/evidence-packet.tsx components/inspect/ops-review.tsx components/auth/auth-gate.tsx app/lib/api.ts app/lib/auth.ts
 ```
@@ -197,4 +247,4 @@ The strategic direction is stronger:
 
 > Ollive is the open-source risk layer for AI-agent observability.
 
-Do not call it a production LangSmith replacement. Ollive should be independent of LangSmith and similar tools: it can ingest from them, but its differentiated job is risk interpretation, evidence packets, and accountability. Before production, it still needs external SDK ingestion, a collector API, multi-tenant controls, retention policy, alerting, evals, review workflows, stronger test coverage, and deploy hardening. See [ship readiness](./docs/ship-readiness.md).
+Do not call it a production LangSmith replacement. Ollive should be independent of LangSmith and similar tools: it can ingest from them, but its differentiated job is risk interpretation, evidence packets, and accountability. Before production, it still needs multi-tenant controls, retention policy, alerting, evals, review workflows, stronger test coverage, and deploy hardening. See [ship readiness](./docs/ship-readiness.md).
