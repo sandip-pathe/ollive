@@ -40,9 +40,9 @@ pipeline maps into the future one.
 | Component | Current status | Target responsibility |
 | --- | --- | --- |
 | Built-in chat | Implemented | First example integration that produces AgentRun evidence. |
-| Collector API | Partial through `/api/ingest/logs` and trace routes | Accept external agent runs and events through stable `/v1` endpoints. |
-| Normalizer | Not separated yet | Convert SDK, adapter, chat, and JSON input into AgentRun. |
-| Run store | Trace tables exist | Persist normalized runs, steps, source evidence, and packet linkage. |
+| Collector API | JSON `/v1/runs` path implemented | Accept external agent runs and events through stable `/v1` endpoints. |
+| Normalizer | JSON and chat-trace projection implemented | Convert SDK, adapter, chat, and JSON input into AgentRun. |
+| Run store | `agent_runs`, `agent_run_steps`, and `agent_run_sources` implemented | Persist normalized runs, steps, source evidence, and packet linkage. |
 | Risk engine | Implemented as deterministic classifier | Evaluate AgentRun evidence using versioned policy packs. |
 | AI analyzer | Not implemented | Optional BYOK reviewer for subtle risk and intent classification. |
 | Evidence packets | Implemented for traces | Generate run-level audit packet with findings and missing evidence. |
@@ -178,4 +178,4 @@ Milestone 1 is architecturally sound when:
 - external agents are not forced through chat concepts
 - LangSmith is an optional input, not a dependency
 - missing evidence is treated as a first-class risk signal
-- the next milestone can implement `/v1/runs` against the schema
+- `/v1/runs` can ingest JSON AgentRun payloads against the schema

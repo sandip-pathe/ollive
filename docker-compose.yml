@@ -12,6 +12,7 @@ services:
       - AUTH_BYPASS=${AUTH_BYPASS:-true}
       - AUTH_INVITE_CODE=${AUTH_INVITE_CODE:-dev}
       - AUTH_SESSION_SECRET=${AUTH_SESSION_SECRET:-dev-session-secret}
+      - OLLIVE_INGEST_TOKEN=${OLLIVE_INGEST_TOKEN:-}
     depends_on:
       - postgres
       - redis

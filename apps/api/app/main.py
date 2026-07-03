@@ -20,10 +20,12 @@ from .redis_client import init_redis, close_redis
 from .auth import router as auth_router
 from .routes import router
 from .trace_runtime import router as trace_router
+from .agent_runs import router as agent_runs_router
 
 app.include_router(auth_router)
 app.include_router(router)
 app.include_router(trace_router)
+app.include_router(agent_runs_router)
 
 @app.on_event("startup")
 async def startup_event():

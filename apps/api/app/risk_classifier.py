@@ -306,7 +306,8 @@ async def _ensure_risk_schema_conn(conn) -> None:
         );
         CREATE TABLE IF NOT EXISTS agent_risk_events (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          trace_id UUID NOT NULL REFERENCES traces(trace_id) ON DELETE CASCADE,
+          trace_id UUID REFERENCES traces(trace_id) ON DELETE CASCADE,
+          run_id TEXT,
           conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
           message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
           policy_rule_id UUID REFERENCES agent_policy_rules(id) ON DELETE SET NULL,
@@ -324,12 +325,16 @@ async def _ensure_risk_schema_conn(conn) -> None:
           classifier_version TEXT NOT NULL,
           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
+        ALTER TABLE agent_risk_events ALTER COLUMN trace_id DROP NOT NULL;
+        ALTER TABLE agent_risk_events ADD COLUMN IF NOT EXISTS run_id TEXT;
         CREATE INDEX IF NOT EXISTS idx_agent_risk_events_trace_id ON agent_risk_events(trace_id);
+        CREATE INDEX IF NOT EXISTS idx_agent_risk_events_run_id ON agent_risk_events(run_id);
         CREATE INDEX IF NOT EXISTS idx_agent_risk_events_category ON agent_risk_events(risk_category);
         CREATE INDEX IF NOT EXISTS idx_agent_risk_events_status ON agent_risk_events(status);
         CREATE TABLE IF NOT EXISTS evidence_packets (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          trace_id UUID NOT NULL REFERENCES traces(trace_id) ON DELETE CASCADE,
+          trace_id UUID REFERENCES traces(trace_id) ON DELETE CASCADE,
+          run_id TEXT,
           conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
           status TEXT NOT NULL,
           insurability_posture TEXT NOT NULL,
@@ -338,7 +343,10 @@ async def _ensure_risk_schema_conn(conn) -> None:
           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
+        ALTER TABLE evidence_packets ALTER COLUMN trace_id DROP NOT NULL;
+        ALTER TABLE evidence_packets ADD COLUMN IF NOT EXISTS run_id TEXT;
         CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_packets_trace_id ON evidence_packets(trace_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_packets_run_id ON evidence_packets(run_id);
         """
     )
     for rule in RULES:
@@ -534,6 +542,148 @@ def classify_trace(trace: dict[str, Any], events: list[dict[str, Any]]) -> list[
     return risk_events
 
 
+def _run_step_text(steps: list[dict[str, Any]], step_types: set[str] | None = None) -> str:
+    parts: list[str] = []
+    for step in steps:
+        if step_types and str(step.get("type")) not in step_types:
+            continue
+        parts.append(_as_text(step.get("input")))
+        parts.append(_as_text(step.get("output")))
+        parts.append(_as_text(step.get("error")))
+    return "\n".join(part for part in parts if part)
+
+
+def _project_run_to_trace(run: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    steps = run.get("steps") or []
+    user_text = _as_text(run.get("task_input"))
+    assistant_text = _run_step_text(steps, {"model_call", "external_action"})
+    event_rows = []
+    for step in steps:
+        event_rows.append(
+            {
+                "id": step.get("id") or step.get("step_id"),
+                "type": step.get("type"),
+                "timestamp": step.get("timestamp"),
+                "payload": {
+                    "name": step.get("name"),
+                    "status": step.get("status"),
+                    "input": step.get("input"),
+                    "output": step.get("output"),
+                    "error": step.get("error"),
+                    "evidence_ref": step.get("evidence_ref"),
+                },
+            }
+        )
+    outcome = run.get("outcome") or {}
+    evidence = run.get("evidence") or {}
+    if outcome.get("status") in {"success", "failed", "cancelled", "timeout"}:
+        event_rows.append(
+            {
+                "id": f"{run.get('run_id')}:outcome",
+                "type": "stream_completed" if outcome.get("status") == "success" else outcome.get("status"),
+                "timestamp": run.get("completed_at"),
+                "payload": outcome,
+            }
+        )
+    trace_like = {
+        "trace_id": run.get("trace_id") or run.get("run_id"),
+        "conversation_id": run.get("conversation_id"),
+        "message_id": None,
+        "status": outcome.get("status") or run.get("outcome_status") or "unknown",
+        "user_preview": user_text,
+        "assistant_preview": assistant_text or _as_text(outcome.get("summary")),
+        "pii_detected": bool(evidence.get("pii_detected")),
+    }
+    return trace_like, event_rows
+
+
+def classify_agent_run(run: dict[str, Any]) -> list[dict[str, Any]]:
+    trace_like, events = _project_run_to_trace(run)
+    risk_events = classify_trace(trace_like, events)
+    steps = run.get("steps") or []
+    authority = run.get("authority") or {}
+    step_types = {str(step.get("type")) for step in steps}
+
+    if not authority:
+        risk_events.append(
+            _risk_event(
+                rule_key="runtime_failure_node",
+                title="Authority scope missing",
+                reason="The run did not include authority scope, allowed actions, disallowed actions, or handoff requirements.",
+                evidence_quote="AgentRun.authority was empty.",
+                evidence_source="agent_run",
+                remediation="Send authority scope with each run so Ollive can detect boundary breaches.",
+                confidence=0.86,
+                status="needs_review",
+                severity="medium",
+                owner="Engineering",
+            )
+        )
+    if not steps:
+        risk_events.append(
+            _risk_event(
+                rule_key="runtime_failure_node",
+                title="No agent steps captured",
+                reason="The run had no ordered steps, so Ollive cannot inspect model calls, tools, handoffs, or side effects.",
+                evidence_quote="AgentRun.steps was empty.",
+                evidence_source="agent_run",
+                remediation="Record at least one user/task step and one model, tool, or outcome step.",
+                confidence=0.94,
+                severity="high",
+                owner="Engineering",
+            )
+        )
+    elif "model_call" not in step_types and "external_action" not in step_types:
+        risk_events.append(
+            _risk_event(
+                rule_key="runtime_failure_node",
+                title="Model or action evidence missing",
+                reason="The run did not include a model_call or external_action step.",
+                evidence_quote="No model_call or external_action step was captured.",
+                evidence_source="agent_run",
+                remediation="Record model calls and external actions before treating the run as observable.",
+                confidence=0.82,
+                status="needs_review",
+                severity="medium",
+                owner="Engineering",
+            )
+        )
+    return risk_events
+
+
+def _agent_run_failure_nodes(run: dict[str, Any], risk_events: list[dict[str, Any]]) -> list[dict[str, str]]:
+    trace_like, events = _project_run_to_trace(run)
+    nodes = _failure_nodes(trace_like, events, risk_events)
+    authority = run.get("authority") or {}
+    steps = run.get("steps") or []
+    step_types = {str(step.get("type")) for step in steps}
+    if not authority:
+        nodes.append(
+            {
+                "type": "missing_authority_scope",
+                "owner": "Engineering",
+                "evidence": "No authority scope was supplied with this run.",
+            }
+        )
+    if not steps:
+        nodes.append(
+            {
+                "type": "missing_agent_steps",
+                "owner": "Engineering",
+                "evidence": "No agent steps were supplied with this run.",
+            }
+        )
+    if "external_action" in step_types and "human_handoff" not in step_types:
+        nodes.append(
+            {
+                "type": "side_effect_without_handoff",
+                "owner": "Risk/Compliance",
+                "evidence": "The run recorded an external action but no human handoff or approval step.",
+            }
+        )
+    return nodes
+
+
 async def generate_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
     await _ensure_risk_schema_conn(conn)
     trace_row = await conn.fetchrow("SELECT * FROM traces WHERE trace_id=$1", trace_id)
@@ -550,6 +700,9 @@ async def generate_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
     for event in events:
         event["payload"] = _loads_json(event.get("payload"))
 
+    from .agent_runtime import upsert_agent_run_from_trace
+
+    run_id = await upsert_agent_run_from_trace(conn, trace, events)
     risk_events = classify_trace(trace, events)
     failure_nodes = _failure_nodes(trace, events, risk_events)
     posture = _terminal_posture(trace, risk_events, "ready")
@@ -571,15 +724,16 @@ async def generate_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
         rule_ids = {row["rule_key"]: row["id"] for row in rule_rows}
         for event in risk_events:
             await conn.execute(
-                """
+            """
                 INSERT INTO agent_risk_events (
-                  trace_id, conversation_id, message_id, policy_rule_id,
+                  trace_id, run_id, conversation_id, message_id, policy_rule_id,
                   policy_pack, risk_category, status, severity, confidence,
                   owner, title, reason, evidence_quote, evidence_source,
                   remediation, classifier_version
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
                 """,
                 trace_id,
+                run_id,
                 trace.get("conversation_id"),
                 trace.get("message_id"),
                 rule_ids.get(event["policy_rule_key"]),
@@ -599,9 +753,10 @@ async def generate_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
         await conn.execute(
             """
             INSERT INTO evidence_packets (
-              trace_id, conversation_id, status, insurability_posture, summary, packet_json
-            ) VALUES ($1,$2,'ready',$3,$4,$5)
+              trace_id, run_id, conversation_id, status, insurability_posture, summary, packet_json
+            ) VALUES ($1,$2,$3,'ready',$4,$5,$6)
             ON CONFLICT (trace_id) DO UPDATE SET
+              run_id=EXCLUDED.run_id,
               status='ready',
               insurability_posture=EXCLUDED.insurability_posture,
               summary=EXCLUDED.summary,
@@ -609,6 +764,7 @@ async def generate_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
               updated_at=now()
             """,
             trace_id,
+            run_id,
             trace.get("conversation_id"),
             posture,
             summary,
@@ -616,6 +772,87 @@ async def generate_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
         )
 
     return await get_evidence_packet(conn, trace_id)
+
+
+async def generate_agent_run_evidence_packet(conn, run_id: str) -> dict[str, Any]:
+    await _ensure_risk_schema_conn(conn)
+    from .agent_runtime import fetch_agent_run
+
+    run = await fetch_agent_run(conn, run_id)
+    if not run:
+        raise ValueError("AgentRun not found")
+    risk_events = classify_agent_run(run)
+    failure_nodes = _agent_run_failure_nodes(run, risk_events)
+    trace_like, events = _project_run_to_trace(run)
+    posture = _terminal_posture(trace_like, risk_events, "ready")
+    summary = _packet_summary(posture, risk_events, failure_nodes)
+    packet_json = {
+        "failure_nodes": failure_nodes,
+        "audit_trail": {
+            "policy_pack": POLICY_PACK,
+            "classifier_version": CLASSIFIER_VERSION,
+            "source_trace_events": len(events),
+            "source_agent_steps": len(run.get("steps") or []),
+            "redacted": bool((run.get("evidence") or {}).get("redaction_applied", True)),
+            "llm_classifier": "not_used",
+            "run_source": run.get("source"),
+        },
+    }
+
+    async with conn.transaction():
+        await conn.execute("DELETE FROM agent_risk_events WHERE run_id=$1", run_id)
+        rule_rows = await conn.fetch("SELECT id, rule_key FROM agent_policy_rules WHERE policy_pack=$1", POLICY_PACK)
+        rule_ids = {row["rule_key"]: row["id"] for row in rule_rows}
+        for event in risk_events:
+            await conn.execute(
+                """
+                INSERT INTO agent_risk_events (
+                  trace_id, run_id, conversation_id, message_id, policy_rule_id,
+                  policy_pack, risk_category, status, severity, confidence,
+                  owner, title, reason, evidence_quote, evidence_source,
+                  remediation, classifier_version
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+                """,
+                run.get("trace_id"),
+                run_id,
+                run.get("conversation_id"),
+                None,
+                rule_ids.get(event["policy_rule_key"]),
+                POLICY_PACK,
+                event["risk_category"],
+                event["status"],
+                event["severity"],
+                Decimal(str(event["confidence"])),
+                event["owner"],
+                event["title"],
+                event["reason"],
+                event["evidence_quote"],
+                event["evidence_source"],
+                event["remediation"],
+                event["classifier_version"],
+            )
+        await conn.execute(
+            """
+            INSERT INTO evidence_packets (
+              trace_id, run_id, conversation_id, status, insurability_posture, summary, packet_json
+            ) VALUES ($1,$2,$3,'ready',$4,$5,$6)
+            ON CONFLICT (run_id) DO UPDATE SET
+              trace_id=EXCLUDED.trace_id,
+              conversation_id=EXCLUDED.conversation_id,
+              status='ready',
+              insurability_posture=EXCLUDED.insurability_posture,
+              summary=EXCLUDED.summary,
+              packet_json=EXCLUDED.packet_json,
+              updated_at=now()
+            """,
+            run.get("trace_id"),
+            run_id,
+            run.get("conversation_id"),
+            posture,
+            summary,
+            json.dumps(packet_json),
+        )
+    return await get_agent_run_evidence_packet(conn, run_id)
 
 
 async def mark_evidence_packet_error(conn, trace_id: UUID, message: str) -> None:
@@ -664,7 +901,7 @@ async def get_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
     packet = await conn.fetchrow(
         """
         SELECT id, trace_id, conversation_id, status, insurability_posture,
-               summary, packet_json, created_at, updated_at
+               run_id, summary, packet_json, created_at, updated_at
         FROM evidence_packets
         WHERE trace_id=$1
         """,
@@ -678,7 +915,7 @@ async def get_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
         packet = await conn.fetchrow(
             """
             SELECT id, trace_id, conversation_id, status, insurability_posture,
-                   summary, packet_json, created_at, updated_at
+                   run_id, summary, packet_json, created_at, updated_at
             FROM evidence_packets
             WHERE trace_id=$1
             """,
@@ -688,7 +925,7 @@ async def get_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
 
     risk_rows = await conn.fetch(
         """
-        SELECT id, trace_id, risk_category, status, severity, confidence, owner,
+        SELECT id, trace_id, run_id, risk_category, status, severity, confidence, owner,
                title, reason, evidence_quote, evidence_source, remediation,
                classifier_version, created_at
         FROM agent_risk_events
@@ -726,6 +963,83 @@ async def get_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
             "policy_pack": POLICY_PACK,
             "classifier_version": CLASSIFIER_VERSION,
             "source_trace_events": 0,
+            "redacted": True,
+        },
+    }
+
+
+async def get_agent_run_evidence_packet(conn, run_id: str) -> dict[str, Any]:
+    await _ensure_risk_schema_conn(conn)
+    packet = await conn.fetchrow(
+        """
+        SELECT id, trace_id, run_id, conversation_id, status, insurability_posture,
+               summary, packet_json, created_at, updated_at
+        FROM evidence_packets
+        WHERE run_id=$1
+        """,
+        run_id,
+    )
+    if not packet:
+        run = await conn.fetchrow("SELECT run_id, conversation_id, trace_id FROM agent_runs WHERE run_id=$1", run_id)
+        if not run:
+            raise ValueError("AgentRun not found")
+        await conn.execute(
+            """
+            INSERT INTO evidence_packets (
+              trace_id, run_id, conversation_id, status, insurability_posture, summary, packet_json
+            ) VALUES ($1,$2,$3,'pending','unknown','Evidence packet generation is pending.',$4)
+            ON CONFLICT (run_id) DO UPDATE SET
+              status='pending',
+              insurability_posture='unknown',
+              summary='Evidence packet generation is pending.',
+              updated_at=now()
+            """,
+            run["trace_id"],
+            run_id,
+            run["conversation_id"],
+            json.dumps({"policy_pack": POLICY_PACK, "classifier_version": CLASSIFIER_VERSION}),
+        )
+        return await generate_agent_run_evidence_packet(conn, run_id)
+
+    risk_rows = await conn.fetch(
+        """
+        SELECT id, trace_id, run_id, risk_category, status, severity, confidence, owner,
+               title, reason, evidence_quote, evidence_source, remediation,
+               classifier_version, created_at
+        FROM agent_risk_events
+        WHERE run_id=$1
+        ORDER BY
+          CASE severity
+            WHEN 'critical' THEN 1
+            WHEN 'high' THEN 2
+            WHEN 'medium' THEN 3
+            WHEN 'low' THEN 4
+            ELSE 5
+          END,
+          confidence DESC,
+          created_at ASC
+        """,
+        run_id,
+    )
+
+    packet_dict = _row_to_dict(packet)
+    packet_json = _loads_json(packet_dict.get("packet_json")) or {}
+    risk_events = []
+    for row in risk_rows:
+        event = _row_to_dict(row)
+        event["confidence"] = float(event["confidence"]) if event.get("confidence") is not None else 0
+        risk_events.append(event)
+    audit_trail = packet_json.get("audit_trail") if isinstance(packet_json, dict) else None
+    failure_nodes = packet_json.get("failure_nodes") if isinstance(packet_json, dict) else None
+    return {
+        "packet": packet_dict,
+        "risk_events": risk_events,
+        "failure_nodes": failure_nodes or [],
+        "audit_trail": audit_trail
+        or {
+            "policy_pack": POLICY_PACK,
+            "classifier_version": CLASSIFIER_VERSION,
+            "source_agent_steps": 0,
             "redacted": True,
         },
     }

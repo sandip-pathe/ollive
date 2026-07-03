@@ -93,6 +93,63 @@ CREATE TABLE IF NOT EXISTS trace_events (
 CREATE INDEX IF NOT EXISTS idx_trace_events_trace_ts ON trace_events(trace_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_trace_events_type ON trace_events(type);
 
+-- normalized agent runs
+CREATE TABLE IF NOT EXISTS agent_runs (
+  run_id TEXT PRIMARY KEY,
+  trace_id UUID REFERENCES traces(trace_id) ON DELETE SET NULL,
+  conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
+  tenant_id TEXT NOT NULL DEFAULT 'local',
+  source TEXT NOT NULL DEFAULT 'json',
+  agent_name TEXT NOT NULL,
+  agent_version TEXT,
+  environment TEXT,
+  task_type TEXT,
+  task_input JSONB NOT NULL DEFAULT 'null',
+  context JSONB NOT NULL DEFAULT '{}',
+  authority JSONB NOT NULL DEFAULT '{}',
+  outcome_status TEXT NOT NULL DEFAULT 'unknown',
+  outcome JSONB NOT NULL DEFAULT '{}',
+  evidence JSONB NOT NULL DEFAULT '{}',
+  metadata JSONB NOT NULL DEFAULT '{}',
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_trace_id ON agent_runs(trace_id);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_conversation_id ON agent_runs(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_outcome_status ON agent_runs(outcome_status);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at ON agent_runs(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS agent_run_steps (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id TEXT NOT NULL REFERENCES agent_runs(run_id) ON DELETE CASCADE,
+  step_id TEXT,
+  type TEXT NOT NULL,
+  timestamp TIMESTAMPTZ,
+  name TEXT,
+  status TEXT NOT NULL DEFAULT 'unknown',
+  input JSONB NOT NULL DEFAULT '{}',
+  output JSONB NOT NULL DEFAULT '{}',
+  error JSONB,
+  evidence_ref TEXT,
+  order_index INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agent_run_steps_run_order ON agent_run_steps(run_id, order_index);
+CREATE INDEX IF NOT EXISTS idx_agent_run_steps_type ON agent_run_steps(type);
+
+CREATE TABLE IF NOT EXISTS agent_run_sources (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id TEXT NOT NULL REFERENCES agent_runs(run_id) ON DELETE CASCADE,
+  source_type TEXT NOT NULL,
+  source_id TEXT,
+  payload JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agent_run_sources_run_id ON agent_run_sources(run_id);
+CREATE INDEX IF NOT EXISTS idx_agent_run_sources_source ON agent_run_sources(source_type, source_id);
+
 -- inference logs
 CREATE TABLE IF NOT EXISTS inference_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -144,7 +201,8 @@ CREATE TABLE IF NOT EXISTS agent_policy_rules (
 
 CREATE TABLE IF NOT EXISTS agent_risk_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  trace_id UUID NOT NULL REFERENCES traces(trace_id) ON DELETE CASCADE,
+  trace_id UUID REFERENCES traces(trace_id) ON DELETE CASCADE,
+  run_id TEXT REFERENCES agent_runs(run_id) ON DELETE CASCADE,
   conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
   message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
   policy_rule_id UUID REFERENCES agent_policy_rules(id) ON DELETE SET NULL,
@@ -163,12 +221,14 @@ CREATE TABLE IF NOT EXISTS agent_risk_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_agent_risk_events_trace_id ON agent_risk_events(trace_id);
+CREATE INDEX IF NOT EXISTS idx_agent_risk_events_run_id ON agent_risk_events(run_id);
 CREATE INDEX IF NOT EXISTS idx_agent_risk_events_category ON agent_risk_events(risk_category);
 CREATE INDEX IF NOT EXISTS idx_agent_risk_events_status ON agent_risk_events(status);
 
 CREATE TABLE IF NOT EXISTS evidence_packets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  trace_id UUID NOT NULL REFERENCES traces(trace_id) ON DELETE CASCADE,
+  trace_id UUID REFERENCES traces(trace_id) ON DELETE CASCADE,
+  run_id TEXT REFERENCES agent_runs(run_id) ON DELETE CASCADE,
   conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
   status TEXT NOT NULL,
   insurability_posture TEXT NOT NULL,
@@ -178,6 +238,7 @@ CREATE TABLE IF NOT EXISTS evidence_packets (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_packets_trace_id ON evidence_packets(trace_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_packets_run_id ON evidence_packets(run_id);
 
 -- memories (optional)
 CREATE TABLE IF NOT EXISTS memories (

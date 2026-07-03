@@ -92,6 +92,12 @@ The Docker setup enables local auth bypass by default with `AUTH_BYPASS=true` an
 - `GET /api/traces/{trace_id}/events/stream` - stream trace events.
 - `GET /api/traces/{trace_id}/evidence-packet` - read or lazily generate an evidence packet.
 - `POST /api/traces/{trace_id}/evidence-packet/recompute` - recompute risk events and packet summary.
+- `POST /v1/runs` - ingest a normalized AgentRun JSON payload and generate a run-level evidence packet.
+- `GET /v1/runs` - list normalized agent runs.
+- `GET /v1/runs/{run_id}` - read one normalized agent run with steps and sources.
+- `POST /v1/runs/{run_id}/events` - append AgentRun steps and recompute the evidence packet.
+- `GET /v1/runs/{run_id}/evidence-packet` - read a run-level evidence packet.
+- `POST /v1/runs/{run_id}/evidence-packet/recompute` - recompute a run-level evidence packet.
 
 ## Architecture
 
@@ -140,6 +146,7 @@ Read more:
 - [OSS risk layer product thesis](./docs/product/oss-risk-layer.md)
 - [Agent risk layer architecture](./docs/architecture/agent-risk-layer.md)
 - [AgentRun schema](./docs/architecture/agent-run-schema.md)
+- [JSON AgentRun ingest](./docs/integrations/json-ingest.md)
 - [OSS milestone roadmap](./docs/roadmap/oss-milestones.md)
 - [Schema notes](./docs/schema.md)
 - [Tradeoffs](./docs/tradeoffs.md)

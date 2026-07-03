@@ -19,8 +19,10 @@ async def init_db():
         raise RuntimeError('DATABASE_URL not set')
     pool = await asyncpg.create_pool(dsn=database_url)
     await ensure_core_schema()
+    from .agent_runtime import ensure_agent_run_schema
     from .risk_classifier import ensure_risk_schema
 
+    await ensure_agent_run_schema(pool)
     await ensure_risk_schema(pool)
 
 async def close_db():

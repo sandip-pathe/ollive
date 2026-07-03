@@ -2,10 +2,9 @@
 
 The schema lives in `packages/database/schema.sql` and is applied to Postgres.
 
-Milestone 1 defines `AgentRun` as the canonical future product object, but the
-database still persists the current chat-as-agent MVP through traces, trace
-events, inference logs, risk events, and evidence packets. No `agent_runs`
-table has been added yet.
+`AgentRun` is the canonical product object for external agent ingest. The
+database now persists both the current chat-as-agent MVP and normalized agent
+runs.
 
 ## Core Tables
 
@@ -16,6 +15,9 @@ table has been added yet.
 - `trace_events` - ordered lifecycle events for each trace.
 - `inference_logs` - SDK-friendly log records for ingestion and enrichment.
 - `extracted_metadata` - queryable key/value metadata extracted from inference logs.
+- `agent_runs` - normalized agent run envelope with agent, task, authority, outcome, and metadata.
+- `agent_run_steps` - ordered normalized steps such as model calls, tool calls, handoffs, and runtime events.
+- `agent_run_sources` - raw source linkage to traces, JSON ingest, SDKs, or adapters.
 - `memories` - optional future memory layer.
 
 ## AgentRun Contract
@@ -107,12 +109,9 @@ Before high-volume production use, add time-based partitioning for `traces`, `tr
 
 ## Future Tables
 
-Expected future tables after Milestone 2 or later:
+Expected future table after later milestones:
 
-- `agent_runs` - canonical run record with agent, task, authority, outcome, and metadata.
-- `agent_run_steps` - ordered normalized steps such as model calls, tool calls, handoffs, and runtime events.
-- `agent_run_sources` - raw source linkage to traces, OpenTelemetry spans, LangSmith runs, or JSON ingest.
 - `agent_authority_scopes` - reusable authority policies for allowed/disallowed actions and required handoff.
 
-These are intentionally not created in Milestone 1. The goal of Milestone 1 is to
-settle the contract before writing migrations.
+Reusable authority policies are intentionally deferred. Milestone 2 stores
+authority inline on each `agent_runs` row so the ingest API stays simple.

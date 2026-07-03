@@ -116,6 +116,12 @@ Core product endpoints:
 - `GET /api/traces/{trace_id}/events/stream`
 - `GET /api/traces/{trace_id}/evidence-packet`
 - `POST /api/traces/{trace_id}/evidence-packet/recompute`
+- `POST /v1/runs`
+- `GET /v1/runs`
+- `GET /v1/runs/{run_id}`
+- `POST /v1/runs/{run_id}/events`
+- `GET /v1/runs/{run_id}/evidence-packet`
+- `POST /v1/runs/{run_id}/evidence-packet/recompute`
 
 Auth endpoints:
 
@@ -134,8 +140,9 @@ Auth endpoints:
 
 - Evidence packet generation is currently an API background task, not a durable Redis job.
 - The product observes the built-in chat-as-agent path first; external agent SDK ingestion is a next step.
-- `AgentRun` is documented but not yet persisted as its own database table.
-- The collector API for external runs is not yet implemented.
+- `AgentRun` is persisted through `agent_runs`, `agent_run_steps`, and `agent_run_sources`.
+- The first collector API accepts JSON AgentRun payloads under `/v1`.
+- Native SDKs and third-party adapters are not yet implemented.
 - Local Docker auth bypass is useful for development and must be disabled for shared environments.
 - Raw payload inspection is valuable for proof of work, but production use needs a retention and access-control policy.
 
@@ -144,4 +151,5 @@ Auth endpoints:
 - [OSS risk layer product thesis](./product/oss-risk-layer.md)
 - [Agent risk layer architecture](./architecture/agent-risk-layer.md)
 - [AgentRun schema](./architecture/agent-run-schema.md)
+- [JSON AgentRun ingest](./integrations/json-ingest.md)
 - [OSS milestone roadmap](./roadmap/oss-milestones.md)
