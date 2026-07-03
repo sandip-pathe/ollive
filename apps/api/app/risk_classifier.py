@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 from decimal import Decimal
 from typing import Any
@@ -10,7 +11,7 @@ from uuid import UUID
 from . import db
 
 POLICY_PACK = "agentic_insurance_v1"
-CLASSIFIER_VERSION = "risk-classifier-v1"
+CLASSIFIER_VERSION = "risk-classifier-v2"
 RISK_PACKET_QUEUE = "risk_packet_queue"
 
 RULES = [
@@ -85,6 +86,24 @@ RULES = [
         "default_severity": "critical",
         "default_owner": "Legal/Compliance",
         "match_strategy": "hybrid",
+    },
+    {
+        "rule_key": "side_effect_without_handoff",
+        "title": "Side effect lacks approval evidence",
+        "description": "Agent changed an external system without human handoff or approval evidence.",
+        "risk_category": "side_effect_without_approval",
+        "default_severity": "high",
+        "default_owner": "Risk/Compliance",
+        "match_strategy": "deterministic",
+    },
+    {
+        "rule_key": "ai_review_note",
+        "title": "AI risk review note",
+        "description": "Optional AI analyzer flagged a risk that needs human review.",
+        "risk_category": "ai_review_note",
+        "default_severity": "medium",
+        "default_owner": "Risk/Compliance",
+        "match_strategy": "llm",
     },
 ]
 
@@ -211,6 +230,8 @@ def _risk_event(
     status: str = "risk_detected",
     severity: str | None = None,
     owner: str | None = None,
+    analysis_source: str = "deterministic",
+    evidence_refs: list[str] | None = None,
 ) -> dict[str, Any]:
     rule = next(rule for rule in RULES if rule["rule_key"] == rule_key)
     confidence, status = _confidence(confidence, status)
@@ -226,8 +247,10 @@ def _risk_event(
         "reason": reason,
         "evidence_quote": evidence_quote[:500] if evidence_quote else None,
         "evidence_source": evidence_source,
+        "evidence_refs": evidence_refs or ([evidence_source] if evidence_source else []),
         "remediation": remediation,
         "classifier_version": CLASSIFIER_VERSION,
+        "analysis_source": analysis_source,
     }
 
 
@@ -283,6 +306,246 @@ def _packet_summary(posture: str, risk_events: list[dict[str, Any]], failure_nod
     return "Evidence packet is pending or unavailable for this run."
 
 
+def _ai_analysis_status_disabled(reason: str) -> dict[str, Any]:
+    return {
+        "enabled": False,
+        "status": "disabled",
+        "reason": reason,
+    }
+
+
+def _ai_analysis_config() -> dict[str, Any]:
+    enabled = os.getenv("OLLIVE_AI_ANALYSIS_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+    api_key = os.getenv("OLLIVE_AI_API_KEY", "").strip()
+    if not enabled:
+        return _ai_analysis_status_disabled("Set OLLIVE_AI_ANALYSIS_ENABLED=true to enable optional AI review.")
+    if not api_key:
+        return {
+            "enabled": False,
+            "status": "disabled",
+            "reason": "OLLIVE_AI_API_KEY is not configured.",
+        }
+    return {
+        "enabled": True,
+        "status": "configured",
+        "api_key": api_key,
+        "base_url": os.getenv("OLLIVE_AI_ANALYSIS_BASE_URL", "https://api.openai.com/v1").rstrip("/"),
+        "model": os.getenv("OLLIVE_AI_ANALYSIS_MODEL", "gpt-4o-mini"),
+        "timeout_seconds": float(os.getenv("OLLIVE_AI_ANALYSIS_TIMEOUT_SECONDS", "8")),
+    }
+
+
+def _truncate_text(value: Any, limit: int = 1200) -> str:
+    text = _as_text(value)
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}...[truncated]"
+
+
+def _agent_run_ai_payload(run: dict[str, Any], deterministic_events: list[dict[str, Any]]) -> dict[str, Any]:
+    steps = []
+    for step in (run.get("steps") or [])[:30]:
+        steps.append(
+            {
+                "type": step.get("type"),
+                "name": step.get("name"),
+                "status": step.get("status"),
+                "input": _truncate_text(step.get("input"), 900),
+                "output": _truncate_text(step.get("output"), 1400),
+                "error": _truncate_text(step.get("error"), 500),
+                "evidence_ref": step.get("evidence_ref"),
+            }
+        )
+    return {
+        "run_id": run.get("run_id"),
+        "agent_name": run.get("agent_name"),
+        "environment": run.get("environment"),
+        "task_type": run.get("task_type"),
+        "task_input": _truncate_text(run.get("task_input"), 1600),
+        "authority": run.get("authority") or {},
+        "outcome": run.get("outcome") or {},
+        "evidence": run.get("evidence") or {},
+        "steps": steps,
+        "deterministic_findings": [
+            {
+                "rule_key": event.get("policy_rule_key"),
+                "title": event.get("title"),
+                "severity": event.get("severity"),
+                "reason": event.get("reason"),
+                "evidence_quote": event.get("evidence_quote"),
+            }
+            for event in deterministic_events
+        ],
+    }
+
+
+def _extract_json_object(text: str) -> Any:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?", "", cleaned.strip(), flags=re.IGNORECASE).strip()
+        cleaned = re.sub(r"```$", "", cleaned).strip()
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start >= 0 and end > start:
+            return json.loads(cleaned[start : end + 1])
+        raise
+
+
+def _normalize_ai_findings(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return []
+    findings = payload.get("findings")
+    if not isinstance(findings, list):
+        return []
+    valid_rule_keys = {str(rule["rule_key"]) for rule in RULES}
+    valid_severities = {"low", "medium", "high", "critical"}
+    normalized: list[dict[str, Any]] = []
+    for index, finding in enumerate(findings[:5]):
+        if not isinstance(finding, dict):
+            continue
+        title = _truncate_text(finding.get("title") or "AI risk review note", 140)
+        reason = _truncate_text(finding.get("reason") or "Optional AI analyzer marked this run for review.", 500)
+        evidence_quote = _truncate_text(finding.get("evidence_quote") or reason, 500)
+        remediation = _truncate_text(finding.get("remediation") or "Review the run evidence and decide whether to add a deterministic rule.", 500)
+        rule_key = str(finding.get("rule_key") or "ai_review_note")
+        if rule_key not in valid_rule_keys:
+            rule_key = "ai_review_note"
+        severity = str(finding.get("severity") or "")
+        if severity not in valid_severities:
+            severity = None
+        try:
+            confidence = float(finding.get("confidence", 0.65))
+        except (TypeError, ValueError):
+            confidence = 0.65
+        confidence = max(0.0, min(confidence, 0.95))
+        normalized.append(
+            _risk_event(
+                rule_key=rule_key,
+                title=title,
+                reason=reason,
+                evidence_quote=evidence_quote,
+                evidence_source="ai_analyzer",
+                remediation=remediation,
+                confidence=confidence,
+                status="needs_review",
+                severity=severity,
+                owner=str(finding.get("owner") or "Risk/Compliance"),
+                analysis_source="ai",
+                evidence_refs=[str(finding.get("evidence_ref") or f"ai_finding:{index}")],
+            )
+        )
+    return normalized
+
+
+async def _maybe_analyze_agent_run_with_ai(
+    run: dict[str, Any],
+    deterministic_events: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    config = _ai_analysis_config()
+    if not config.get("enabled"):
+        return [], config
+
+    body = {
+        "model": config["model"],
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are Ollive's optional AI risk reviewer for agentic insurance observability. "
+                    "Return JSON only. Add review findings when the run shows trust, auditability, "
+                    "accountability, authority, missing-evidence, or side-effect risk. Do not mark unknown "
+                    "evidence as safe. Do not override deterministic findings."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "instructions": {
+                            "schema": {
+                                "findings": [
+                                    {
+                                        "rule_key": "one of the known Ollive policy rule keys, or ai_review_note",
+                                        "title": "short title",
+                                        "severity": "low|medium|high|critical",
+                                        "confidence": 0.0,
+                                        "owner": "Engineering|Risk/Compliance|Legal/Compliance|Support|Founder",
+                                        "reason": "why this needs review",
+                                        "evidence_quote": "short quote from supplied run evidence",
+                                        "remediation": "specific next action",
+                                        "evidence_ref": "step or field reference if available",
+                                    }
+                                ]
+                            },
+                            "allowed_rule_keys": [rule["rule_key"] for rule in RULES],
+                            "max_findings": 5,
+                        },
+                        "agent_run": _agent_run_ai_payload(run, deterministic_events),
+                    },
+                    default=str,
+                ),
+            },
+        ],
+    }
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=config["timeout_seconds"]) as client:
+            response = await client.post(
+                f"{config['base_url']}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {config['api_key']}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        ai_events = _normalize_ai_findings(_extract_json_object(content))
+        return ai_events, {
+            "enabled": True,
+            "status": "used",
+            "model": config["model"],
+            "base_url": config["base_url"],
+            "findings": len(ai_events),
+        }
+    except Exception as exc:
+        return [], {
+            "enabled": True,
+            "status": "error",
+            "model": config["model"],
+            "base_url": config["base_url"],
+            "error": str(exc)[:300],
+        }
+
+
+def _merge_risk_events(
+    deterministic_events: list[dict[str, Any]],
+    ai_events: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged = list(deterministic_events)
+    seen = {
+        (
+            event.get("policy_rule_key"),
+            event.get("title"),
+            event.get("evidence_quote"),
+        )
+        for event in merged
+    }
+    for event in ai_events:
+        key = (event.get("policy_rule_key"), event.get("title"), event.get("evidence_quote"))
+        if key in seen:
+            continue
+        merged.append(event)
+        seen.add(key)
+    return merged
+
+
 async def ensure_risk_schema(pool) -> None:
     async with pool.acquire() as conn:
         await _ensure_risk_schema_conn(conn)
@@ -321,16 +584,21 @@ async def _ensure_risk_schema_conn(conn) -> None:
           reason TEXT NOT NULL,
           evidence_quote TEXT,
           evidence_source TEXT NOT NULL,
+          evidence_refs JSONB NOT NULL DEFAULT '[]',
           remediation TEXT NOT NULL,
           classifier_version TEXT NOT NULL,
+          analysis_source TEXT NOT NULL DEFAULT 'deterministic',
           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
         ALTER TABLE agent_risk_events ALTER COLUMN trace_id DROP NOT NULL;
         ALTER TABLE agent_risk_events ADD COLUMN IF NOT EXISTS run_id TEXT;
+        ALTER TABLE agent_risk_events ADD COLUMN IF NOT EXISTS evidence_refs JSONB NOT NULL DEFAULT '[]';
+        ALTER TABLE agent_risk_events ADD COLUMN IF NOT EXISTS analysis_source TEXT NOT NULL DEFAULT 'deterministic';
         CREATE INDEX IF NOT EXISTS idx_agent_risk_events_trace_id ON agent_risk_events(trace_id);
         CREATE INDEX IF NOT EXISTS idx_agent_risk_events_run_id ON agent_risk_events(run_id);
         CREATE INDEX IF NOT EXISTS idx_agent_risk_events_category ON agent_risk_events(risk_category);
         CREATE INDEX IF NOT EXISTS idx_agent_risk_events_status ON agent_risk_events(status);
+        CREATE INDEX IF NOT EXISTS idx_agent_risk_events_analysis_source ON agent_risk_events(analysis_source);
         CREATE TABLE IF NOT EXISTS evidence_packets (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           trace_id UUID REFERENCES traces(trace_id) ON DELETE CASCADE,
@@ -648,6 +916,27 @@ def classify_agent_run(run: dict[str, Any]) -> list[dict[str, Any]]:
                 owner="Engineering",
             )
         )
+    if "external_action" in step_types and "human_handoff" not in step_types:
+        external_action_text = _run_step_text(steps, {"external_action"})
+        risk_events.append(
+            _risk_event(
+                rule_key="side_effect_without_handoff",
+                title="Side effect lacks approval evidence",
+                reason="The run recorded an external action but did not include a human handoff, review, or approval step.",
+                evidence_quote=_evidence_quote(external_action_text, None, external_action_text)
+                or "External action was recorded without human_handoff.",
+                evidence_source="agent_run_step",
+                remediation="Emit a human_handoff or approval step before external actions that mutate customer, claim, policy, payment, or ticket state.",
+                confidence=0.88,
+                severity="high",
+                owner="Risk/Compliance",
+                evidence_refs=[
+                    str(step.get("step_id") or step.get("id") or "external_action")
+                    for step in steps
+                    if str(step.get("type")) == "external_action"
+                ],
+            )
+        )
     return risk_events
 
 
@@ -700,10 +989,13 @@ async def generate_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
     for event in events:
         event["payload"] = _loads_json(event.get("payload"))
 
-    from .agent_runtime import upsert_agent_run_from_trace
+    from .agent_runtime import fetch_agent_run, upsert_agent_run_from_trace
 
     run_id = await upsert_agent_run_from_trace(conn, trace, events)
     risk_events = classify_trace(trace, events)
+    run = await fetch_agent_run(conn, run_id)
+    ai_events, ai_status = await _maybe_analyze_agent_run_with_ai(run or {}, risk_events)
+    risk_events = _merge_risk_events(risk_events, ai_events)
     failure_nodes = _failure_nodes(trace, events, risk_events)
     posture = _terminal_posture(trace, risk_events, "ready")
     summary = _packet_summary(posture, risk_events, failure_nodes)
@@ -714,7 +1006,8 @@ async def generate_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
             "classifier_version": CLASSIFIER_VERSION,
             "source_trace_events": len(events),
             "redacted": True,
-            "llm_classifier": "not_used",
+            "llm_classifier": ai_status.get("status", "disabled"),
+            "ai_analyzer": ai_status,
         },
     }
 
@@ -729,8 +1022,8 @@ async def generate_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
                   trace_id, run_id, conversation_id, message_id, policy_rule_id,
                   policy_pack, risk_category, status, severity, confidence,
                   owner, title, reason, evidence_quote, evidence_source,
-                  remediation, classifier_version
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+                  evidence_refs, remediation, classifier_version, analysis_source
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
                 """,
                 trace_id,
                 run_id,
@@ -747,8 +1040,10 @@ async def generate_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
                 event["reason"],
                 event["evidence_quote"],
                 event["evidence_source"],
+                json.dumps(event.get("evidence_refs") or []),
                 event["remediation"],
                 event["classifier_version"],
+                event.get("analysis_source", "deterministic"),
             )
         await conn.execute(
             """
@@ -782,6 +1077,8 @@ async def generate_agent_run_evidence_packet(conn, run_id: str) -> dict[str, Any
     if not run:
         raise ValueError("AgentRun not found")
     risk_events = classify_agent_run(run)
+    ai_events, ai_status = await _maybe_analyze_agent_run_with_ai(run, risk_events)
+    risk_events = _merge_risk_events(risk_events, ai_events)
     failure_nodes = _agent_run_failure_nodes(run, risk_events)
     trace_like, events = _project_run_to_trace(run)
     posture = _terminal_posture(trace_like, risk_events, "ready")
@@ -794,7 +1091,8 @@ async def generate_agent_run_evidence_packet(conn, run_id: str) -> dict[str, Any
             "source_trace_events": len(events),
             "source_agent_steps": len(run.get("steps") or []),
             "redacted": bool((run.get("evidence") or {}).get("redaction_applied", True)),
-            "llm_classifier": "not_used",
+            "llm_classifier": ai_status.get("status", "disabled"),
+            "ai_analyzer": ai_status,
             "run_source": run.get("source"),
         },
     }
@@ -810,8 +1108,8 @@ async def generate_agent_run_evidence_packet(conn, run_id: str) -> dict[str, Any
                   trace_id, run_id, conversation_id, message_id, policy_rule_id,
                   policy_pack, risk_category, status, severity, confidence,
                   owner, title, reason, evidence_quote, evidence_source,
-                  remediation, classifier_version
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+                  evidence_refs, remediation, classifier_version, analysis_source
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
                 """,
                 run.get("trace_id"),
                 run_id,
@@ -828,8 +1126,10 @@ async def generate_agent_run_evidence_packet(conn, run_id: str) -> dict[str, Any
                 event["reason"],
                 event["evidence_quote"],
                 event["evidence_source"],
+                json.dumps(event.get("evidence_refs") or []),
                 event["remediation"],
                 event["classifier_version"],
+                event.get("analysis_source", "deterministic"),
             )
         await conn.execute(
             """
@@ -926,8 +1226,8 @@ async def get_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
     risk_rows = await conn.fetch(
         """
         SELECT id, trace_id, run_id, risk_category, status, severity, confidence, owner,
-               title, reason, evidence_quote, evidence_source, remediation,
-               classifier_version, created_at
+               title, reason, evidence_quote, evidence_source, evidence_refs,
+               remediation, classifier_version, analysis_source, created_at
         FROM agent_risk_events
         WHERE trace_id=$1
         ORDER BY
@@ -950,6 +1250,7 @@ async def get_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
     for row in risk_rows:
         event = _row_to_dict(row)
         event["confidence"] = float(event["confidence"]) if event.get("confidence") is not None else 0
+        event["evidence_refs"] = _loads_json(event.get("evidence_refs")) or []
         risk_events.append(event)
 
     audit_trail = packet_json.get("audit_trail") if isinstance(packet_json, dict) else None
@@ -1004,8 +1305,8 @@ async def get_agent_run_evidence_packet(conn, run_id: str) -> dict[str, Any]:
     risk_rows = await conn.fetch(
         """
         SELECT id, trace_id, run_id, risk_category, status, severity, confidence, owner,
-               title, reason, evidence_quote, evidence_source, remediation,
-               classifier_version, created_at
+               title, reason, evidence_quote, evidence_source, evidence_refs,
+               remediation, classifier_version, analysis_source, created_at
         FROM agent_risk_events
         WHERE run_id=$1
         ORDER BY
@@ -1028,6 +1329,7 @@ async def get_agent_run_evidence_packet(conn, run_id: str) -> dict[str, Any]:
     for row in risk_rows:
         event = _row_to_dict(row)
         event["confidence"] = float(event["confidence"]) if event.get("confidence") is not None else 0
+        event["evidence_refs"] = _loads_json(event.get("evidence_refs")) or []
         risk_events.append(event)
     audit_trail = packet_json.get("audit_trail") if isinstance(packet_json, dict) else None
     failure_nodes = packet_json.get("failure_nodes") if isinstance(packet_json, dict) else None

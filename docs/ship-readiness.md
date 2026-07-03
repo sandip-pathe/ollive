@@ -23,6 +23,7 @@ It has:
 - JSON `/v1/runs` collector API
 - run-level evidence packet generation
 - first-party TypeScript SDK in `packages/ollive-js`
+- V2 deterministic risk engine with optional BYOK AI review
 
 Milestone 1 added the product and architecture contract for the next version:
 
@@ -64,7 +65,7 @@ The current system is suitable for demo, design partner feedback, and proof-of-w
 - Multi-tenant auth, access control, and audit logs.
 - Retention and redaction policy for raw payloads.
 - Alerts, thresholds, and review queues.
-- Classifier evals and human review workflow.
+- Larger classifier eval suite and human review workflow.
 - CI coverage for API and frontend.
 - Deployment hardening with bypass disabled.
 

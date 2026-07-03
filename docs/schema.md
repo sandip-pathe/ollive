@@ -60,11 +60,12 @@ Important fields:
 
 ### `agent_risk_events`
 
-Stores classifier findings for one trace.
+Stores classifier findings for one trace or normalized agent run.
 
 Important fields:
 
 - `trace_id`
+- `run_id`
 - `conversation_id`
 - `message_id`
 - `policy_rule_id`
@@ -77,8 +78,10 @@ Important fields:
 - `reason`
 - `evidence_quote`
 - `evidence_source`
+- `evidence_refs`
 - `remediation`
 - `classifier_version`
+- `analysis_source`
 
 ### `evidence_packets`
 
@@ -87,6 +90,7 @@ Stores the packet wrapper that the inspect UI renders.
 Important fields:
 
 - `trace_id`
+- `run_id`
 - `conversation_id`
 - `status`
 - `insurability_posture`
@@ -97,9 +101,8 @@ Important fields:
 
 `packet_json` currently stores failure nodes and audit trail metadata. Risk events stay normalized in `agent_risk_events` so they can be queried by category, severity, owner, and status.
 
-In the target architecture, evidence packets should be run-level packets. Until
-the `agent_runs` table exists, packets are generated from trace evidence and the
-schema should continue to expose missing evidence clearly.
+Evidence packets can now be generated from normalized `AgentRun` evidence.
+Chat traces are projected into AgentRun so both paths use the same risk model.
 
 ## Indexing Notes
 

@@ -44,7 +44,7 @@ pipeline maps into the future one.
 | Normalizer | JSON and chat-trace projection implemented | Convert SDK, adapter, chat, and JSON input into AgentRun. |
 | Run store | `agent_runs`, `agent_run_steps`, and `agent_run_sources` implemented | Persist normalized runs, steps, source evidence, and packet linkage. |
 | Risk engine | Implemented as deterministic classifier | Evaluate AgentRun evidence using versioned policy packs. |
-| AI analyzer | Not implemented | Optional BYOK reviewer for subtle risk and intent classification. |
+| AI analyzer | Implemented as opt-in V2 hook | Optional BYOK reviewer for subtle risk and intent classification. |
 | Evidence packets | Implemented for traces | Generate run-level audit packet with findings and missing evidence. |
 | Dashboard | Implemented around chat traces | Lead with risk posture, evidence completeness, and stakeholder views. |
 | Adapters | Not implemented | Import from LangSmith, OpenTelemetry, and custom logs. |

@@ -216,14 +216,17 @@ CREATE TABLE IF NOT EXISTS agent_risk_events (
   reason TEXT NOT NULL,
   evidence_quote TEXT,
   evidence_source TEXT NOT NULL,
+  evidence_refs JSONB NOT NULL DEFAULT '[]',
   remediation TEXT NOT NULL,
   classifier_version TEXT NOT NULL,
+  analysis_source TEXT NOT NULL DEFAULT 'deterministic',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_agent_risk_events_trace_id ON agent_risk_events(trace_id);
 CREATE INDEX IF NOT EXISTS idx_agent_risk_events_run_id ON agent_risk_events(run_id);
 CREATE INDEX IF NOT EXISTS idx_agent_risk_events_category ON agent_risk_events(risk_category);
 CREATE INDEX IF NOT EXISTS idx_agent_risk_events_status ON agent_risk_events(status);
+CREATE INDEX IF NOT EXISTS idx_agent_risk_events_analysis_source ON agent_risk_events(analysis_source);
 
 CREATE TABLE IF NOT EXISTS evidence_packets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

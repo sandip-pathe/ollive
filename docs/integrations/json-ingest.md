@@ -124,5 +124,5 @@ Examples of missing evidence that should affect posture:
 - The collector stores `AgentRun` and run steps in Postgres.
 - The run-level evidence packet uses the deterministic `agentic_insurance_v1`
   policy pack.
-- Optional AI analysis is a later milestone.
+- Optional BYOK AI analysis is available behind `OLLIVE_AI_ANALYSIS_ENABLED=true`.
 - LangSmith and OpenTelemetry adapters are later milestones.

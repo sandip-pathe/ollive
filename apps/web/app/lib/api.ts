@@ -102,7 +102,8 @@ export type AgentRiskSeverity = "low" | "medium" | "high" | "critical";
 
 export type EvidencePacket = {
   id?: string | null;
-  trace_id: string;
+  trace_id?: string | null;
+  run_id?: string | null;
   conversation_id?: string | null;
   status: EvidencePacketStatus | string;
   insurability_posture: InsurabilityPosture | string;
@@ -114,7 +115,8 @@ export type EvidencePacket = {
 
 export type AgentRiskEvent = {
   id: string;
-  trace_id: string;
+  trace_id?: string | null;
+  run_id?: string | null;
   risk_category: string;
   status: AgentRiskStatus | string;
   severity: AgentRiskSeverity | string;
@@ -124,8 +126,10 @@ export type AgentRiskEvent = {
   reason: string;
   evidence_quote?: string | null;
   evidence_source: string;
+  evidence_refs?: string[];
   remediation: string;
   classifier_version?: string | null;
+  analysis_source?: "deterministic" | "ai" | string | null;
   created_at?: string | null;
 };
 

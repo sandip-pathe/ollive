@@ -126,6 +126,8 @@ Manual review:
 
 ## Milestone 4: Risk Engine V2 And Optional AI Analysis
 
+Status: implemented in `risk-classifier-v2`.
+
 Goal: move from trace-specific rule code to a run-level risk engine with optional
 BYOK AI analysis.
 
@@ -152,7 +154,9 @@ Verification:
 python -m py_compile apps/api/app/risk_classifier.py
 ```
 
-Add and run the risk eval command once implemented.
+```bash
+python -m unittest discover -s apps/api/tests
+```
 
 Manual review:
 

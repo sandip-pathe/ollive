@@ -18,7 +18,8 @@ Current shipped MVP:
 - Includes a first-party TypeScript SDK in `packages/ollive-js` for instrumenting agent backends.
 - Shows live inspection for request lifecycle, latency, token/cost evidence, raw request/response payloads, and event timelines.
 - Generates an Agent Risk & Insurability Evidence Packet for a selected trace.
-- Classifies agentic risk with the `agentic_insurance_v1` policy pack.
+- Classifies agentic risk with the V2 `agentic_insurance_v1` policy pack.
+- Optionally adds BYOK AI risk review findings with explicit provenance.
 - Flags risky promises, coverage/regulated advice, PII exposure, missed escalation, unsupported claims, unsafe suggestions, runtime failure nodes, and authority boundary breaches.
 - Assigns owner and remediation for each risk event.
 - Renders chat messages as rich Markdown instead of raw Markdown text.
@@ -192,6 +193,7 @@ Read more:
 - [AgentRun schema](./docs/architecture/agent-run-schema.md)
 - [JSON AgentRun ingest](./docs/integrations/json-ingest.md)
 - [JavaScript SDK integration](./docs/integrations/js-sdk.md)
+- [Risk Engine V2](./docs/risk/risk-engine-v2.md)
 - [OSS milestone roadmap](./docs/roadmap/oss-milestones.md)
 - [Schema notes](./docs/schema.md)
 - [Tradeoffs](./docs/tradeoffs.md)

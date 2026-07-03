@@ -1,0 +1,14 @@
+{
+  "run_id": "eval_incomplete_missing_authority",
+  "task_input": "Please cancel my policy.",
+  "authority": {},
+  "steps": [],
+  "outcome": {
+    "status": "unknown",
+    "summary": null,
+    "side_effects": []
+  },
+  "evidence": {
+    "redaction_applied": true
+  }
+}
