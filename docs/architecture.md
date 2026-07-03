@@ -2,6 +2,8 @@
 
 Ollive is a monorepo with a Next.js frontend, FastAPI backend, Postgres database, Redis queue, SDK wrapper, and enrichment worker.
 
+The current shipped system is trace-first because chat-as-agent is the first working integration. The target architecture is run-first: every chat trace, SDK event, adapter import, or JSON payload should normalize into an `AgentRun`.
+
 ## Runtime Services
 
 | Service | Path | Responsibility |
@@ -15,7 +17,7 @@ Ollive is a monorepo with a Next.js frontend, FastAPI backend, Postgres database
 
 Local Docker Compose starts `web`, `api`, `postgres`, `redis`, and `worker`.
 
-## Data Flow
+## Current Data Flow
 
 ```text
 Browser chat UI
@@ -29,9 +31,41 @@ Browser chat UI
   -> inspect UI renders trace detail + packet
 ```
 
+## Target Data Flow
+
+```text
+Customer agent app
+  -> Ollive SDK / JSON ingest / observability adapter
+  -> collector API
+  -> AgentRun normalizer
+  -> run store
+  -> risk engine
+  -> evidence packet generator
+  -> dashboard, review, export
+```
+
+The current chat path should eventually feed the same normalizer as external agent applications.
+
+## AgentRun Model
+
+`AgentRun` is the canonical future observability unit. It represents one attempt by an AI agent to complete a task. A run can contain user input, model calls, tool calls, retrieval, memory access, policy checks, human handoff, side effects, runtime failures, and final outcome.
+
+See [AgentRun schema](./architecture/agent-run-schema.md).
+
+Current chat traces map into `AgentRun` as the first integration:
+
+| Current concept | AgentRun concept |
+| --- | --- |
+| `traces.trace_id` | run ID or source evidence ID |
+| conversation + message | task/thread evidence |
+| OpenAI wrapper call | model call step |
+| `trace_events` | runtime event steps |
+| `agent_risk_events` | generated risk findings |
+| `evidence_packets` | generated run packet |
+
 ## Trace Model
 
-A trace is the unit of observability. It represents one model run inside one conversation.
+A trace is the current shipped unit of observability. It represents one model run inside one conversation.
 
 The trace records:
 
@@ -48,6 +82,8 @@ The trace records:
 - raw request and response payloads when available
 
 Trace events add runtime lifecycle detail such as first token, chunks, completion, warning, cancellation, timeout, or error.
+
+In the target architecture, traces are source evidence inside an `AgentRun`. They remain useful and inspectable, but they are not the only ingestion shape.
 
 ## Insurance Evidence Model
 
@@ -98,5 +134,14 @@ Auth endpoints:
 
 - Evidence packet generation is currently an API background task, not a durable Redis job.
 - The product observes the built-in chat-as-agent path first; external agent SDK ingestion is a next step.
+- `AgentRun` is documented but not yet persisted as its own database table.
+- The collector API for external runs is not yet implemented.
 - Local Docker auth bypass is useful for development and must be disabled for shared environments.
 - Raw payload inspection is valuable for proof of work, but production use needs a retention and access-control policy.
+
+## Target Architecture References
+
+- [OSS risk layer product thesis](./product/oss-risk-layer.md)
+- [Agent risk layer architecture](./architecture/agent-risk-layer.md)
+- [AgentRun schema](./architecture/agent-run-schema.md)
+- [OSS milestone roadmap](./roadmap/oss-milestones.md)

@@ -6,6 +6,8 @@ Ollive is aimed at the insurance side of AI-agent adoption. The customer is not 
 
 Insurance for agentic AI needs a record of what the agent did, what it knew, where it crossed a boundary, and who is accountable for remediation. Chat is the first agent surface. The same model should later apply to workflow agents, tool-using agents, and background automations.
 
+Milestone 1 names that shared model: `AgentRun`. A chat trace is the first source of `AgentRun` evidence, not the final product boundary.
+
 ## Stakeholders
 
 Engineers care about:
@@ -54,7 +56,7 @@ It contains:
 - audit trail
 - failure nodes
 
-The packet is generated from trace evidence. It should not claim safety when the trace is incomplete.
+The packet is currently generated from trace evidence. In the target architecture, it is generated from normalized `AgentRun` evidence. It should not claim safety when evidence is incomplete.
 
 ## Current Policy Pack
 
@@ -83,11 +85,18 @@ raw telemetry -> trace evidence -> risk event -> insurability posture -> account
 
 That gives technical teams something to debug and business/risk teams something to evaluate.
 
+The target architecture generalizes this to:
+
+```text
+agent run evidence -> risk finding -> evidence packet -> accountable remediation
+```
+
 ## What Is Still Needed
 
 To become production-grade, Ollive needs:
 
 - external SDK ingestion for non-chat agents
+- collector API for normalized AgentRun ingest
 - durable worker-backed packet generation
 - review queues and resolution workflows
 - alerting and thresholds

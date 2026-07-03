@@ -4,6 +4,12 @@ Date: 2026-05-24
 
 This file records the architecture and implementation choices agreed and locked by the project owner. Any change to these choices requires explicit approval.
 
+Milestone 1 addendum: Ollive's target architecture is now the open-source risk
+layer for AI-agent observability. The current chat trace pipeline remains locked
+as the working MVP path, while future SDKs, adapters, and JSON ingest should
+normalize into the `AgentRun` contract documented in
+`docs/architecture/agent-run-schema.md`.
+
 ## Core Choices
 
 - Provider: OpenAI primary.
@@ -55,6 +61,7 @@ This file records the architecture and implementation choices agreed and locked 
 - Ingestion validates and persists `inference_logs` and `extracted_metadata`; enrichment runs through the Redis worker.
 - Logging payload includes provider, model, timestamps, latency, token usage when available, status, redacted previews, session ID, conversation ID, and trace ID.
 - Agentic insurance evidence packets are generated from trace, event, and message evidence. Incomplete runtime evidence must be surfaced as a failure node.
+- Future external agent ingestion must not force all runs through chat concepts. It should map source evidence into `AgentRun`, then generate risk findings and evidence packets from that normalized run.
 
 ## Locked Status
 

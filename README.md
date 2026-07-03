@@ -1,12 +1,16 @@
 # Ollive
 
-Ollive is an agentic insurance observability prototype. It treats every chat run as an agent action, records the runtime trace, and turns that trace into an Agent Risk & Insurability Evidence Packet.
+Ollive is becoming the open-source risk layer for AI-agent observability.
 
-The product thesis is simple: if an insurance company is willing to insure AI-agent actions inside customer workflows, it needs more than token counts and latency charts. It needs evidence of trust, auditability, accountability, authority boundaries, failure nodes, and remediation ownership.
+Today, it ships as an agentic insurance observability MVP for chat-as-agent workflows. It treats every chat run as an agent action, records the runtime trace, and turns that evidence into an Agent Risk & Insurability Evidence Packet.
+
+The product thesis is simple: teams deploying AI agents in high-accountability workflows need more than token counts and latency charts. They need evidence of trust, auditability, accountability, authority boundaries, failure nodes, and remediation ownership.
 
 Hosted demo: [ollive-insure.vercel.app](https://ollive-insure.vercel.app/)
 
 ## What It Does
+
+Current shipped MVP:
 
 - Streams multi-turn chat through a FastAPI backend and OpenAI-compatible wrapper.
 - Persists conversations, messages, traces, trace events, inference logs, and extracted metadata in Postgres.
@@ -17,6 +21,13 @@ Hosted demo: [ollive-insure.vercel.app](https://ollive-insure.vercel.app/)
 - Assigns owner and remediation for each risk event.
 - Renders chat messages as rich Markdown instead of raw Markdown text.
 - Runs locally with Docker Compose, including the web app, API, Postgres, Redis, and enrichment worker.
+
+Milestone 1 target direction:
+
+- `AgentRun` becomes the canonical observability object.
+- Chat is the first example integration, not the long-term product boundary.
+- External agent SDKs, JSON ingest, LangSmith import, and OpenTelemetry import should all normalize into the same run model.
+- Evidence packets should be generated from normalized agent evidence and should call out missing evidence instead of pretending unknown runs are safe.
 
 ## Screenshots
 
@@ -94,7 +105,7 @@ Ollive is a small monorepo:
 - `packages/worker` - Redis enrichment worker for metadata extraction.
 - `docs` - architecture, product, schema, tradeoff, and readiness notes.
 
-The trace flow is:
+The current trace flow is:
 
 ```text
 chat request
@@ -107,11 +118,29 @@ chat request
   -> inspect UI
 ```
 
+The target OSS risk-layer flow is:
+
+```text
+agent app
+  -> Ollive SDK / adapter / JSON ingest
+  -> collector API
+  -> normalized AgentRun
+  -> risk engine
+  -> evidence packet
+  -> dashboard / export / review
+```
+
+No Ollive-hosted service should be required. LangSmith, OpenTelemetry, custom logs, and the current chat path are inputs to the risk layer, not hard dependencies.
+
 Read more:
 
 - [Architecture notes](./ARCHITECTURE_NOTES.md)
 - [System architecture](./docs/architecture.md)
 - [Agentic insurance observability](./docs/agentic-insurance-observability.md)
+- [OSS risk layer product thesis](./docs/product/oss-risk-layer.md)
+- [Agent risk layer architecture](./docs/architecture/agent-risk-layer.md)
+- [AgentRun schema](./docs/architecture/agent-run-schema.md)
+- [OSS milestone roadmap](./docs/roadmap/oss-milestones.md)
 - [Schema notes](./docs/schema.md)
 - [Tradeoffs](./docs/tradeoffs.md)
 - [Ship readiness](./docs/ship-readiness.md)
@@ -157,4 +186,8 @@ docker compose ps
 
 You can call this an observability tool now, but be precise: it is an agentic insurance observability MVP for chat-as-agent workflows. It has real trace capture, persistence, risk classification, evidence packets, and an inspect UI.
 
-Do not call it a production LangSmith replacement yet. Before production, it still needs SDK ingestion for external agents, multi-tenant controls, retention policy, alerting, evals, review workflows, stronger test coverage, and deploy hardening. See [ship readiness](./docs/ship-readiness.md).
+The strategic direction is stronger:
+
+> Ollive is the open-source risk layer for AI-agent observability.
+
+Do not call it a production LangSmith replacement. Ollive should be independent of LangSmith and similar tools: it can ingest from them, but its differentiated job is risk interpretation, evidence packets, and accountability. Before production, it still needs external SDK ingestion, a collector API, multi-tenant controls, retention policy, alerting, evals, review workflows, stronger test coverage, and deploy hardening. See [ship readiness](./docs/ship-readiness.md).
