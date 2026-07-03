@@ -17,6 +17,7 @@ Current shipped MVP:
 - Accepts normalized `AgentRun` JSON through `/v1/runs`.
 - Includes a first-party TypeScript SDK in `packages/ollive-js` for instrumenting agent backends.
 - Shows live inspection for request lifecycle, latency, token/cost evidence, raw request/response payloads, and event timelines.
+- Shows a run-first risk posture dashboard for AgentRuns, packets, failure nodes, and accountability owners.
 - Generates an Agent Risk & Insurability Evidence Packet for a selected trace.
 - Classifies agentic risk with the V2 `agentic_insurance_v1` policy pack.
 - Optionally adds BYOK AI risk review findings with explicit provenance.
@@ -118,7 +119,7 @@ The Docker setup enables local auth bypass by default with `AUTH_BYPASS=true` an
 3. Select a trace from the trace evidence console.
 4. Review the live trace details and event timeline.
 5. Open the evidence packet tab to see insurability posture, risk events, owner, remediation, audit trail, and failure nodes.
-6. Use Recompute after a trace changes or after backfilling trace events.
+6. Export the evidence packet as JSON, or use Recompute after a trace changes or after backfilling trace events.
 
 ## Core Endpoints
 

@@ -6,6 +6,7 @@ import { API_BASE, apiFetch } from "@/app/lib/api";
 import { getStoredAuthToken } from "@/app/lib/auth";
 import { Button } from "@/components/ui/button";
 import type {
+  AgentRunSummary,
   EvidencePacketResponse,
   MetricsOverview,
   Trace as ApiTrace,
@@ -62,6 +63,15 @@ function metadataToLines(entries: Array<{ key: string; value?: string | null }> 
   return entries.map((entry) => `${entry.key}: ${entry.value ?? "-"}`);
 }
 
+async function fetchAgentRuns() {
+  try {
+    return await apiFetch<AgentRunSummary[]>("/v1/runs?limit=100");
+  } catch (error) {
+    console.debug("Failed to load AgentRun summaries", error);
+    return [];
+  }
+}
+
 export function InspectPanel({
   sessionId = "",
   onClose,
@@ -70,6 +80,7 @@ export function InspectPanel({
   onClose?: () => void;
 }) {
   const [traceList, setTraceList] = useState<ApiTrace[]>([]);
+  const [agentRuns, setAgentRuns] = useState<AgentRunSummary[]>([]);
   const [traceDetail, setTraceDetail] = useState<TraceDetail | null>(null);
   const [evidencePacket, setEvidencePacket] = useState<EvidencePacketResponse | null>(null);
   const [metrics, setMetrics] = useState<MetricsOverview | null>(null);
@@ -89,13 +100,15 @@ export function InspectPanel({
 
     const refreshList = async () => {
       try {
-        const [metricData, traces] = await Promise.all([
+        const [metricData, traces, runs] = await Promise.all([
           apiFetch<MetricsOverview>("/api/metrics/overview"),
           apiFetch<ApiTrace[]>("/api/traces?limit=100"),
+          fetchAgentRuns(),
         ]);
         if (!mounted) return;
         setMetrics(metricData);
         setTraceList(traces);
+        setAgentRuns(runs);
         const target =
           traces.find((trace) => trace.trace_id === sessionId) ||
           traces.find((trace) => trace.conversation_id === sessionId) ||
@@ -139,13 +152,15 @@ export function InspectPanel({
 
       void (async () => {
         try {
-          const [metricData, traces] = await Promise.all([
+          const [metricData, traces, runs] = await Promise.all([
             apiFetch<MetricsOverview>("/api/metrics/overview"),
             apiFetch<ApiTrace[]>("/api/traces?limit=100"),
+            fetchAgentRuns(),
           ]);
           if (cancelled) return;
           setMetrics(metricData);
           setTraceList(traces);
+          setAgentRuns(runs);
           const target =
             traces.find((trace) => trace.trace_id === sessionId) ||
             traces.find((trace) => trace.conversation_id === sessionId) ||
@@ -244,11 +259,15 @@ export function InspectPanel({
     if (!selectedTrace?.trace_id) return;
     setRecomputingPacket(true);
     try {
-      const packet = await apiFetch<EvidencePacketResponse>(
-        `/api/traces/${selectedTrace.trace_id}/evidence-packet/recompute`,
-        { method: "POST" },
-      );
+      const [packet, runs] = await Promise.all([
+        apiFetch<EvidencePacketResponse>(
+          `/api/traces/${selectedTrace.trace_id}/evidence-packet/recompute`,
+          { method: "POST" },
+        ),
+        fetchAgentRuns(),
+      ]);
       setEvidencePacket(packet);
+      setAgentRuns(runs);
     } catch (error) {
       console.debug("Failed to recompute evidence packet", error);
     } finally {
@@ -378,7 +397,7 @@ export function InspectPanel({
     <div className="flex h-full w-full min-w-0 min-h-0 flex-col overflow-hidden bg-[#f6f4ec] text-[#2f2d28]">
       <header className="flex w-full shrink-0 min-w-0 items-start justify-between gap-4 border-b border-[#ddd8cb] bg-[#f6f4ec] px-5 py-2">
         <div className="px-3 py-2 text-[11px] uppercase tracking-[0.18em] text-[#676057]">
-          Trace evidence console
+          Agent risk console
         </div>
         {onClose ? (
           <Button
@@ -402,6 +421,7 @@ export function InspectPanel({
         ) : (
           <InspectTabs
             traces={traceList}
+            agentRuns={agentRuns}
             selectedTrace={trace}
             metrics={metrics}
             evidencePacket={evidencePacket}

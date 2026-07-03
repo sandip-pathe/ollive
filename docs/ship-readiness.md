@@ -19,6 +19,7 @@ It has:
 - persisted evidence packets
 - recompute endpoint and UI action
 - evidence packet UI with posture, risk events, audit trail, and failure nodes
+- run-first risk posture dashboard with AgentRun summaries and packet JSON export
 - normalized `AgentRun` tables
 - JSON `/v1/runs` collector API
 - run-level evidence packet generation

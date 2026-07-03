@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   ClipboardCheck,
+  Download,
   FileSearch,
   RefreshCw,
   ShieldAlert,
@@ -96,6 +97,20 @@ export function EvidencePacketPanel({
   const failureNodes = packet?.failure_nodes || [];
   const auditTrail = packet?.audit_trail || {};
   const riskCount = events.length;
+  const exportPacket = () => {
+    if (!packet) return;
+    const blob = new Blob([JSON.stringify(packet, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ollive-evidence-packet-${packet.packet.run_id || packet.packet.trace_id || "run"}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
 
   return (
     <section className="rounded-lg border border-[#d9d1c1] bg-[#fbfaf6] shadow-[0_8px_24px_rgba(55,46,28,0.05)]">
@@ -120,16 +135,28 @@ export function EvidencePacketPanel({
           </p>
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full shrink-0 border-[#d5cbb8] bg-[#fbfaf6] text-[#4f473d] hover:bg-[#f2eadb] lg:w-auto"
-          onClick={onRecompute}
-          disabled={!onRecompute || recomputing}
-        >
-          <RefreshCw className={`mr-2 h-4 w-4 ${recomputing ? "animate-spin" : ""}`} />
-          Recompute
-        </Button>
+        <div className="flex w-full shrink-0 flex-col gap-2 sm:flex-row lg:w-auto">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full border-[#d5cbb8] bg-[#fbfaf6] text-[#4f473d] hover:bg-[#f2eadb] sm:w-auto"
+            onClick={exportPacket}
+            disabled={!packet}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export JSON
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full border-[#d5cbb8] bg-[#fbfaf6] text-[#4f473d] hover:bg-[#f2eadb] sm:w-auto"
+            onClick={onRecompute}
+            disabled={!onRecompute || recomputing}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${recomputing ? "animate-spin" : ""}`} />
+            Recompute
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 px-4 py-4 sm:grid-cols-2 xl:grid-cols-4 sm:px-5">
@@ -185,6 +212,9 @@ export function EvidencePacketPanel({
                         <Badge className="border-current/20 bg-white/45 text-current">
                           {titleCase(event.risk_category)}
                         </Badge>
+                        <Badge className="border-current/20 bg-white/45 text-current">
+                          {titleCase(event.analysis_source || "deterministic")}
+                        </Badge>
                       </div>
                       <p className="mt-1 text-sm leading-6 opacity-85">{event.reason}</p>
                     </div>
@@ -216,10 +246,13 @@ export function EvidencePacketPanel({
               Trace: <span className="font-medium text-[#2f2d28]">{selectedTrace.trace_id}</span>
             </p>
             <p>
-              Classifier: <span className="font-medium text-[#2f2d28]">{String(auditTrail.classifier_version || "risk-classifier-v1")}</span>
+              Classifier: <span className="font-medium text-[#2f2d28]">{String(auditTrail.classifier_version || "risk-classifier-v2")}</span>
             </p>
             <p>
               Policy pack: <span className="font-medium text-[#2f2d28]">{String(auditTrail.policy_pack || "agentic_insurance_v1")}</span>
+            </p>
+            <p>
+              AI review: <span className="font-medium text-[#2f2d28]">{String(auditTrail.llm_classifier || "disabled")}</span>
             </p>
           </div>
 

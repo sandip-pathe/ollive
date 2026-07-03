@@ -166,6 +166,8 @@ Manual review:
 
 ## Milestone 5: Dashboard Reframe Around Risk Posture
 
+Status: implemented in the Inspect dashboard.
+
 Goal: make the UI feel like risk observability for agents, not generic trace
 inspection.
 

@@ -186,6 +186,29 @@ export type MetricsOverview = {
   recent_errors?: Array<Record<string, unknown>>;
 };
 
+export type AgentRunSummary = {
+  run_id: string;
+  trace_id?: string | null;
+  conversation_id?: string | null;
+  tenant_id?: string | null;
+  source?: string | null;
+  agent_name: string;
+  agent_version?: string | null;
+  environment?: string | null;
+  task_type?: string | null;
+  task_input?: unknown;
+  outcome_status?: string | null;
+  outcome?: Record<string, unknown> | null;
+  evidence?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
+  steps_count?: number | null;
+  packet_status?: string | null;
+  insurability_posture?: InsurabilityPosture | string | null;
+  packet_summary?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
