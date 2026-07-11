@@ -2,7 +2,14 @@ import json
 import unittest
 from pathlib import Path
 
-from apps.api.app.risk_classifier import CLASSIFIER_VERSION, _normalize_ai_findings, classify_agent_run
+from apps.api.app.risk_classifier import (
+    ASSESSMENT_VERSION,
+    CLASSIFIER_VERSION,
+    _assessment_metadata,
+    _normalize_ai_findings,
+    _redaction_provenance,
+    classify_agent_run,
+)
 
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "agent_runs"
@@ -71,6 +78,26 @@ class AgentRunEvalTests(unittest.TestCase):
         self.assertEqual(findings[0]["analysis_source"], "ai")
         self.assertEqual(findings[0]["status"], "needs_review")
         self.assertEqual(findings[0]["confidence"], 0.95)
+
+    def test_assessment_separates_policy_findings_and_evidence_gaps(self):
+        findings = classify_agent_run(load_fixture("incomplete_missing_authority.json"))
+        assessment = _assessment_metadata(findings)
+
+        self.assertEqual(assessment["version"], ASSESSMENT_VERSION)
+        self.assertEqual(assessment["status"], "experimental")
+        self.assertEqual(assessment["decision_use"], "review_support_only")
+        self.assertGreaterEqual(assessment["finding_classes"]["evidence_quality_gaps"], 2)
+        self.assertTrue(assessment["finding_classes"]["unevaluated_domains"])
+
+    def test_missing_redaction_provenance_stays_unknown(self):
+        self.assertEqual(
+            _redaction_provenance({}),
+            {"redacted": False, "redaction_status": "unknown"},
+        )
+        self.assertEqual(
+            _redaction_provenance({"redaction_applied": True}),
+            {"redacted": True, "redaction_status": "applied"},
+        )
 
 
 if __name__ == "__main__":

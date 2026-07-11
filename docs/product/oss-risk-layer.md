@@ -1,6 +1,8 @@
-# Ollive OSS Risk Layer
+# Ollive Risk-Layer Product Thesis
 
-Ollive is becoming the open-source risk layer for AI-agent observability.
+Ollive explores whether an open-source risk layer should exist above AI-agent
+observability evidence. v0.1 is an experimental reference implementation, not
+proof that Ollive owns that category.
 
 The core idea is simple: existing observability tools can show traces, latency,
 tokens, prompts, tool calls, and errors. Ollive sits on top of those signals and
@@ -11,11 +13,11 @@ boundaries, which failures matter, and who owns remediation.
 
 Ollive is:
 
-- self-hosted by default
+- self-contained and locally runnable
 - open-source by design
 - independent of hosted Ollive infrastructure
-- compatible with existing observability systems
-- focused on risk, auditability, accountability, and insurability
+- designed around vendor-independent AgentRun evidence
+- focused on risk, auditability, accountability, and authority boundaries
 
 Ollive is not:
 
@@ -25,14 +27,14 @@ Ollive is not:
 - an insurance underwriter
 - a compliance certification system
 
-The sharp claim is:
+The long-term thesis is:
 
 > Ollive is the open-source risk layer for AI-agent observability.
 
-The safe current claim is:
+The accurate v0.1 claim is:
 
-> Ollive is an agentic insurance observability MVP that turns chat-as-agent traces
-> into risk and insurability evidence packets.
+> Ollive is an experimental open-source reference implementation that turns
+> Ollive-formatted AgentRuns into risk evidence packets.
 
 ## Why This Should Exist
 
@@ -47,7 +49,7 @@ The questions are different by stakeholder:
 - Compliance teams ask: who reviewed the risky run and what changed afterward?
 - Insurers ask: what failure modes are systemic versus isolated?
 
-Ollive should own this layer.
+Ollive tests whether this layer is useful enough to deserve a standalone project.
 
 ## Product Unit
 
@@ -70,21 +72,18 @@ chat trace
 
 ## Integration Posture
 
-Ollive should accept evidence from many sources:
+Ollive v0.1 accepts evidence from:
 
-- native Ollive SDKs
+- the first-party TypeScript SDK
 - JSON ingest
-- OpenTelemetry spans
-- LangSmith exports or callbacks
-- custom backend logs
 - current built-in chat traces
 
-LangSmith and similar tools are inputs, not dependencies. Ollive should be useful
-with them, without them, and after a team replaces them.
+OpenTelemetry, LangSmith, Python, and custom-log adapters are possible future
+inputs, not shipped compatibility. Ollive does not depend on those systems.
 
 ## Deployment Posture
 
-Ollive should require no hosted Ollive runtime.
+Ollive requires no hosted Ollive runtime.
 
 The default developer path should be:
 
@@ -95,14 +94,10 @@ send one agent run
 open evidence packet
 ```
 
-The default production path should be:
-
-```text
-self-host collector + database + dashboard
-configure retention and auth
-send agent runs from application code
-export evidence packets for review
-```
+The included Compose stack is local/reference only. A production path would
+require tenant authorization, retention enforcement, durable operations,
+versioned migrations, security hardening, and independent validation; v0.1 does
+not provide that path.
 
 ## First Market Wedge
 
@@ -124,10 +119,11 @@ Bad first users:
 
 ## Success Criteria
 
-Milestone 1 is successful when the repo clearly says:
+The v0.1 thesis artifact is successful when the repo clearly says:
 
-- `AgentRun` is the canonical future product object.
+- `AgentRun` is the canonical product object.
 - chat remains the first example integration.
 - evidence packets are generated from normalized agent evidence.
 - Ollive is independent of LangSmith and other observability vendors.
-- the next milestone can implement ingest against a stable schema.
+- adapters are unimplemented, findings are unvalidated, and packet output is
+  experimental review support only.

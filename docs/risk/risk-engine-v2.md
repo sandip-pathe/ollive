@@ -1,6 +1,6 @@
 # Risk Engine V2
 
-Milestone 4 moves Ollive toward a run-level risk engine.
+Ollive v0.1 includes a run-level risk engine.
 
 The default path is deterministic and offline. Optional AI analysis can add
 review findings when the operator brings their own model key, but AI findings do
@@ -60,9 +60,23 @@ AI findings are constrained:
 This keeps AI useful for subtle review hints while preserving deterministic
 rules as the release-blocking source of truth.
 
+## Assessment Boundary
+
+Each packet exposes an `assessment` object with:
+
+- `status: experimental`
+- `decision_use: review_support_only`
+- separate counts for policy findings and evidence-quality gaps
+- a fixed list of unevaluated domains
+- explicit limitations for heuristic, evidence-bounded, unvalidated output
+
+Missing redaction provenance is reported as `redaction_status: unknown` and
+never defaults to applied. Packet posture is not a safety, compliance,
+underwriting, insurability, or insurance decision.
+
 ## Evals
 
-Milestone 4 adds fixture-based API tests under:
+Fixture-based API tests live under:
 
 ```text
 apps/api/tests/fixtures/agent_runs

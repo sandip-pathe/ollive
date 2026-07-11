@@ -1,0 +1,60 @@
+name: Bug report
+description: Report a reproducible defect in the Ollive reference implementation.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ollive is experimental and has no support SLA or guaranteed response. Never include secrets, customer data, or unredacted prompts.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.0 or a commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - AgentRun API
+        - Risk classifier or packet
+        - TypeScript SDK
+        - Inspect dashboard
+        - Docker Compose
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest sanitized steps or payload that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and logs
+      description: Remove credentials, customer data, and sensitive payloads.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed secrets, customer data, and unredacted prompts.
+          required: true
+        - label: I understand that this project has no guaranteed response or fix timeline.
+          required: true

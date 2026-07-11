@@ -96,6 +96,29 @@ async def ensure_agent_run_schema_conn(conn) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_agent_run_steps_run_order ON agent_run_steps(run_id, order_index);
         CREATE INDEX IF NOT EXISTS idx_agent_run_steps_type ON agent_run_steps(type);
+        DO $$
+        BEGIN
+          IF to_regclass('idx_agent_run_steps_run_step_id') IS NULL THEN
+            DELETE FROM agent_run_steps
+            WHERE id IN (
+              SELECT id
+              FROM (
+                SELECT
+                  id,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY run_id, step_id
+                    ORDER BY created_at DESC, id DESC
+                  ) AS duplicate_number
+                FROM agent_run_steps
+                WHERE step_id IS NOT NULL
+              ) duplicates
+              WHERE duplicate_number > 1
+            );
+          END IF;
+        END $$;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_run_steps_run_step_id
+          ON agent_run_steps(run_id, step_id)
+          WHERE step_id IS NOT NULL;
 
         CREATE TABLE IF NOT EXISTS agent_run_sources (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -125,68 +148,69 @@ async def upsert_agent_run(conn, payload: dict[str, Any], *, source: str = "json
     trace_id = payload.get("trace_id")
     conversation_id = payload.get("conversation_id")
 
-    await conn.execute(
-        """
-        INSERT INTO agent_runs (
-          run_id, trace_id, conversation_id, tenant_id, source, agent_name,
-          agent_version, environment, task_type, task_input, context,
-          authority, outcome_status, outcome, evidence, metadata,
-          started_at, completed_at
-        ) VALUES (
-          $1,$2,$3,$4,$5,$6,
-          $7,$8,$9,$10,$11,
-          $12,$13,$14,$15,$16,
-          $17,$18
+    async with conn.transaction():
+        await conn.execute(
+            """
+            INSERT INTO agent_runs (
+              run_id, trace_id, conversation_id, tenant_id, source, agent_name,
+              agent_version, environment, task_type, task_input, context,
+              authority, outcome_status, outcome, evidence, metadata,
+              started_at, completed_at
+            ) VALUES (
+              $1,$2,$3,$4,$5,$6,
+              $7,$8,$9,$10,$11,
+              $12,$13,$14,$15,$16,
+              $17,$18
+            )
+            ON CONFLICT (run_id) DO UPDATE SET
+              trace_id=EXCLUDED.trace_id,
+              conversation_id=EXCLUDED.conversation_id,
+              tenant_id=EXCLUDED.tenant_id,
+              source=EXCLUDED.source,
+              agent_name=EXCLUDED.agent_name,
+              agent_version=EXCLUDED.agent_version,
+              environment=EXCLUDED.environment,
+              task_type=EXCLUDED.task_type,
+              task_input=EXCLUDED.task_input,
+              context=EXCLUDED.context,
+              authority=EXCLUDED.authority,
+              outcome_status=EXCLUDED.outcome_status,
+              outcome=EXCLUDED.outcome,
+              evidence=EXCLUDED.evidence,
+              metadata=EXCLUDED.metadata,
+              started_at=EXCLUDED.started_at,
+              completed_at=EXCLUDED.completed_at,
+              updated_at=now()
+            """,
+            run_id,
+            UUID(str(trace_id)) if trace_id else None,
+            UUID(str(conversation_id)) if conversation_id else None,
+            str(payload.get("tenant_id") or metadata.get("tenant_id") or "local"),
+            str(source or payload.get("source") or "json"),
+            str(agent.get("name") or "unknown-agent"),
+            agent.get("version"),
+            agent.get("environment"),
+            task.get("type"),
+            _json(task.get("input"), None),
+            _json(context, {}),
+            _json(authority, {}),
+            str(outcome.get("status") or "unknown"),
+            _json(outcome, {}),
+            _json(evidence, {}),
+            _json(metadata, {}),
+            payload.get("started_at"),
+            payload.get("completed_at"),
         )
-        ON CONFLICT (run_id) DO UPDATE SET
-          trace_id=EXCLUDED.trace_id,
-          conversation_id=EXCLUDED.conversation_id,
-          tenant_id=EXCLUDED.tenant_id,
-          source=EXCLUDED.source,
-          agent_name=EXCLUDED.agent_name,
-          agent_version=EXCLUDED.agent_version,
-          environment=EXCLUDED.environment,
-          task_type=EXCLUDED.task_type,
-          task_input=EXCLUDED.task_input,
-          context=EXCLUDED.context,
-          authority=EXCLUDED.authority,
-          outcome_status=EXCLUDED.outcome_status,
-          outcome=EXCLUDED.outcome,
-          evidence=EXCLUDED.evidence,
-          metadata=EXCLUDED.metadata,
-          started_at=EXCLUDED.started_at,
-          completed_at=EXCLUDED.completed_at,
-          updated_at=now()
-        """,
-        run_id,
-        UUID(str(trace_id)) if trace_id else None,
-        UUID(str(conversation_id)) if conversation_id else None,
-        str(payload.get("tenant_id") or metadata.get("tenant_id") or "local"),
-        str(source or payload.get("source") or "json"),
-        str(agent.get("name") or "unknown-agent"),
-        agent.get("version"),
-        agent.get("environment"),
-        task.get("type"),
-        _json(task.get("input"), None),
-        _json(context, {}),
-        _json(authority, {}),
-        str(outcome.get("status") or "unknown"),
-        _json(outcome, {}),
-        _json(evidence, {}),
-        _json(metadata, {}),
-        payload.get("started_at"),
-        payload.get("completed_at"),
-    )
-    await conn.execute("DELETE FROM agent_run_steps WHERE run_id=$1", run_id)
-    await insert_agent_run_steps(conn, run_id, steps)
-    await record_agent_run_source(conn, run_id, source, payload.get("source_id"), payload)
+        await conn.execute("DELETE FROM agent_run_steps WHERE run_id=$1", run_id)
+        await insert_agent_run_steps(conn, run_id, steps)
+        await record_agent_run_source(conn, run_id, source, payload.get("source_id"), payload)
     return run_id
 
 
 async def insert_agent_run_steps(conn, run_id: str, steps: list[dict[str, Any]]) -> None:
     await ensure_agent_run_schema_conn(conn)
     current = await conn.fetchval("SELECT COALESCE(MAX(order_index), -1) FROM agent_run_steps WHERE run_id=$1", run_id)
-    start = int(current or -1) + 1
+    start = int(current) + 1 if current is not None else 0
     for offset, step in enumerate(steps):
         await conn.execute(
             """
@@ -194,6 +218,15 @@ async def insert_agent_run_steps(conn, run_id: str, steps: list[dict[str, Any]])
               run_id, step_id, type, timestamp, name, status,
               input, output, error, evidence_ref, order_index
             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            ON CONFLICT (run_id, step_id) WHERE step_id IS NOT NULL DO UPDATE SET
+              type=EXCLUDED.type,
+              timestamp=EXCLUDED.timestamp,
+              name=EXCLUDED.name,
+              status=EXCLUDED.status,
+              input=EXCLUDED.input,
+              output=EXCLUDED.output,
+              error=EXCLUDED.error,
+              evidence_ref=EXCLUDED.evidence_ref
             """,
             run_id,
             step.get("step_id"),
@@ -358,6 +391,7 @@ async def upsert_agent_run_from_trace(conn, trace: dict[str, Any], events: list[
         },
         "evidence": {
             "redaction_applied": True,
+            "redaction_scope": "packet_previews_only",
             "pii_detected": bool(trace.get("pii_detected")),
             "source": "ollive-chat-trace",
         },

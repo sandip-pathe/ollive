@@ -1,7 +1,7 @@
 {
   "name": "@ollive/risk-layer",
   "version": "0.1.0",
-  "description": "Open-source risk layer client for AI-agent observability.",
+  "description": "Client for Ollive's experimental AgentRun risk-evidence reference implementation.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,10 +13,14 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "test:package": "node scripts/package-smoke.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit --pretty false",
     "typecheck:examples": "tsc -p tsconfig.examples.json --pretty false"
   },
@@ -27,6 +31,22 @@
     "insurance",
     "audit"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sandip-pathe/ollive.git",
+    "directory": "packages/ollive-js"
+  },
+  "homepage": "https://github.com/sandip-pathe/ollive#readme",
+  "bugs": {
+    "url": "https://github.com/sandip-pathe/ollive/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.0.0",

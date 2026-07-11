@@ -63,11 +63,14 @@ explicitly.
 | `authority.requires_handoff` | array | Conditions requiring human review. |
 | `outcome.summary` | string | Human-readable result. |
 | `outcome.side_effects` | array | External actions taken or attempted. |
-| `evidence.redaction_applied` | boolean | Whether sensitive data was redacted before storage. |
+| `evidence.redaction_applied` | boolean | Whether sensitive data was redacted before storage. If omitted, packet provenance remains `unknown`. |
 
 ## Step Model
 
 Each run contains ordered `steps`.
+
+Non-null `step_id` values are idempotency keys within a run. Retrying an append
+with the same `(run_id, step_id)` updates that step instead of duplicating it.
 
 ```json
 {
@@ -83,7 +86,7 @@ Each run contains ordered `steps`.
 }
 ```
 
-Supported step types for Milestone 1:
+Supported step types in v0.1:
 
 | Step type | Description |
 | --- | --- |
@@ -261,9 +264,11 @@ That is acceptable for the MVP, but packets must surface these gaps.
 - `packages/ollive-js` records model calls, tool calls, human handoff, external actions, and terminal outcomes.
 - Existing chat traces are projected into `AgentRun`.
 - Evidence packets can be generated from normalized runs.
+- Packets expose machine-readable experimental status, evidence-gap counts,
+  unevaluated domains, and assessment limitations.
 
 ## Remaining Non-Goals
 
 - No LangSmith or OpenTelemetry adapter yet.
-- No AI-based risk analyzer yet.
 - No published npm package yet.
+- No calibrated policy score, external validation, or production tenancy.

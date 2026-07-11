@@ -4,60 +4,89 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     ports:
-      - "8001:8000"
+      - "${OLLIVE_API_PORT:-8001}:8000"
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - AUTH_BYPASS=${AUTH_BYPASS:-true}
-      - AUTH_INVITE_CODE=${AUTH_INVITE_CODE:-dev}
-      - AUTH_SESSION_SECRET=${AUTH_SESSION_SECRET:-dev-session-secret}
-      - OLLIVE_INGEST_TOKEN=${OLLIVE_INGEST_TOKEN:-}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://ollive:changeme@postgres:5432/ollive_dev}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AUTH_BYPASS: ${AUTH_BYPASS:-true}
+      AUTH_INVITE_CODE: ${AUTH_INVITE_CODE:-dev}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:-dev-session-secret}
+      MAX_CALLS_PER_USER: ${MAX_CALLS_PER_USER:-1000}
+      OLLIVE_INGEST_TOKEN: ${OLLIVE_INGEST_TOKEN:-}
+      OLLIVE_AI_ANALYSIS_ENABLED: ${OLLIVE_AI_ANALYSIS_ENABLED:-false}
+      OLLIVE_AI_API_KEY: ${OLLIVE_AI_API_KEY:-}
+      OLLIVE_AI_ANALYSIS_MODEL: ${OLLIVE_AI_ANALYSIS_MODEL:-gpt-4o-mini}
+      OLLIVE_AI_ANALYSIS_BASE_URL: ${OLLIVE_AI_ANALYSIS_BASE_URL:-https://api.openai.com/v1}
+      OLLIVE_AI_ANALYSIS_TIMEOUT_SECONDS: ${OLLIVE_AI_ANALYSIS_TIMEOUT_SECONDS:-8}
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
   postgres:
     image: postgres:15
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-ollive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-ollive_dev}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./packages/database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
     ports:
-      - "5433:5432"
+      - "${OLLIVE_POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
   redis:
     image: redis:7-alpine
     ports:
-      - "6380:6379"
+      - "${OLLIVE_REDIS_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   web:
     image: node:22-alpine
     working_dir: /app/apps/web
     command: sh -c "test -d node_modules/next || npm install --no-audit --no-fund --package-lock=false; npm run dev -- --hostname 0.0.0.0 --port 3000"
     environment:
-      - NEXT_PUBLIC_API_BASE=http://localhost:8001
-      - NEXT_PUBLIC_AUTH_BYPASS=true
-      - NEXT_TELEMETRY_DISABLED=1
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8001}
+      NEXT_PUBLIC_AUTH_BYPASS: ${NEXT_PUBLIC_AUTH_BYPASS:-true}
+      NEXT_TELEMETRY_DISABLED: "1"
     volumes:
       - .:/app
       - web_node_modules:/app/apps/web/node_modules
     ports:
-      - "3000:3000"
+      - "${OLLIVE_WEB_PORT:-3000}:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   worker:
     build:
       context: .
       dockerfile: packages/worker/Dockerfile
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://ollive:changeme@postgres:5432/ollive_dev}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   pgdata:

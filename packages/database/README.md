@@ -26,12 +26,16 @@ This package contains the Postgres schema and database notes for Ollive.
 - `evidence_packets`
 - `memories`
 
-## Apply Locally
+## Local Bootstrap
 
-With Docker Compose running:
+On a fresh Compose volume, `schema.sql` is mounted into Postgres and applied
+automatically before the API starts. To reapply the idempotent schema manually:
 
 ```bash
 Get-Content packages/database/schema.sql | docker compose exec -T postgres psql -U ollive -d ollive_dev
 ```
 
-The API also guards the newest columns and risk/evidence tables on startup so older local databases can continue to boot.
+The API also guards the newest columns and risk/evidence tables on startup so
+older local databases can continue to boot. v0.1 does not provide a supported
+in-place migration or rollback path; back up persistent data before changing
+versions.

@@ -1,23 +1,27 @@
+import unittest
+
 from packages.shared.redaction import redact_text, redact_preview
 
 
-def test_redact_email():
-    t = 'Contact me at alice@example.com for details.'
-    red, r = redact_text(t)
-    assert '[REDACTED]' in red
-    assert any(x['type']=='email' for x in r)
+class RedactionTests(unittest.TestCase):
+    def test_redact_email(self):
+        text = "Contact me at alice@example.com for details."
+        redacted, findings = redact_text(text)
+        self.assertIn("[REDACTED]", redacted)
+        self.assertTrue(any(item["type"] == "email" for item in findings))
+
+    def test_redact_phone(self):
+        text = "Call +1 (555) 123-4567 tomorrow."
+        redacted, findings = redact_text(text)
+        self.assertIn("[REDACTED]", redacted)
+        self.assertTrue(any(item["type"] == "phone" for item in findings))
+
+    def test_preview_length_and_redaction(self):
+        text = "alice@example.com " + "a" * 500
+        preview = redact_preview(text, max_len=100)
+        self.assertLessEqual(len(preview), 100)
+        self.assertIn("[REDACTED]", preview)
 
 
-def test_redact_phone():
-    t = 'Call +1 (555) 123-4567 tomorrow.'
-    red, r = redact_text(t)
-    assert '[REDACTED]' in red
-    assert any(x['type']=='phone' for x in r)
-
-
-def test_preview_length_and_redaction():
-    t = 'a'*500 + ' alice@example.com'
-    prev = redact_preview(t, max_len=100)
-    assert len(prev) <= 100
-    assert '[REDACTED]' in prev
-
+if __name__ == "__main__":
+    unittest.main()

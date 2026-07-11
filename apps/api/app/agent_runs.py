@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-import hmac
-import os
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from . import db
 from .agent_runtime import fetch_agent_run, list_agent_runs, upsert_agent_run, insert_agent_run_steps
+from .collector_auth import require_ingest_access
 from .risk_classifier import generate_agent_run_evidence_packet, get_agent_run_evidence_packet
 
 router = APIRouter(prefix="/v1")
-INGEST_TOKEN = os.getenv("OLLIVE_INGEST_TOKEN")
 
 
 class AgentIdentity(BaseModel):
@@ -81,31 +79,14 @@ def _model_dict(model: BaseModel) -> dict[str, Any]:
     return model.dict()
 
 
-async def require_ingest_access(request: Request) -> None:
-    if not INGEST_TOKEN:
-        return
-    token = request.headers.get("x-ollive-token", "").strip()
-    auth_header = request.headers.get("authorization", "").strip()
-    if not token and auth_header.lower().startswith("bearer "):
-        token = auth_header.split(" ", 1)[1].strip()
-    if not token or not hmac.compare_digest(token, INGEST_TOKEN):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "problem": "Invalid Ollive ingest token",
-                "cause": "OLLIVE_INGEST_TOKEN is configured, but the request did not provide a matching X-Ollive-Token or Bearer token.",
-                "fix": "Send X-Ollive-Token with the configured token, or unset OLLIVE_INGEST_TOKEN for local-only development.",
-            },
-        )
-
-
 @router.post("/runs", dependencies=[Depends(require_ingest_access)])
 async def create_agent_run(payload: AgentRunIn):
     data = _model_dict(payload)
     async with _get_pool().acquire() as conn:
-        run_id = await upsert_agent_run(conn, data, source="json")
-        packet = await generate_agent_run_evidence_packet(conn, run_id)
-        run = await fetch_agent_run(conn, run_id)
+        async with conn.transaction():
+            run_id = await upsert_agent_run(conn, data, source="json")
+            packet = await generate_agent_run_evidence_packet(conn, run_id)
+            run = await fetch_agent_run(conn, run_id)
     return {"run": run, "evidence_packet": packet}
 
 
@@ -137,12 +118,14 @@ async def append_agent_run_events(run_id: str, payload: AgentRunEventsIn):
         )
     steps = [_model_dict(step) for step in payload.steps]
     async with _get_pool().acquire() as conn:
-        run = await fetch_agent_run(conn, run_id)
-        if not run:
-            raise HTTPException(404, "AgentRun not found")
-        await insert_agent_run_steps(conn, run_id, steps)
-        packet = await generate_agent_run_evidence_packet(conn, run_id)
-        updated = await fetch_agent_run(conn, run_id)
+        async with conn.transaction():
+            await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", f"ollive:run:{run_id}")
+            run = await fetch_agent_run(conn, run_id)
+            if not run:
+                raise HTTPException(404, "AgentRun not found")
+            await insert_agent_run_steps(conn, run_id, steps)
+            packet = await generate_agent_run_evidence_packet(conn, run_id)
+            updated = await fetch_agent_run(conn, run_id)
     return {"run": updated, "evidence_packet": packet}
 
 

@@ -138,6 +138,9 @@ CREATE TABLE IF NOT EXISTS agent_run_steps (
 );
 CREATE INDEX IF NOT EXISTS idx_agent_run_steps_run_order ON agent_run_steps(run_id, order_index);
 CREATE INDEX IF NOT EXISTS idx_agent_run_steps_type ON agent_run_steps(type);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_run_steps_run_step_id
+  ON agent_run_steps(run_id, step_id)
+  WHERE step_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS agent_run_sources (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

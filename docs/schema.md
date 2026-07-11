@@ -22,8 +22,8 @@ runs.
 
 ## AgentRun Contract
 
-`AgentRun` is the normalized shape that future SDKs, adapters, JSON ingest, and
-the built-in chat integration should feed.
+`AgentRun` is the normalized shape fed by JSON ingest, the TypeScript SDK, and
+the built-in chat projection. Future adapters must use the same shape.
 
 Current schema mapping:
 
@@ -38,8 +38,7 @@ Current schema mapping:
 | `agent_risk_events` | generated run findings |
 | `evidence_packets` | generated packet wrapper |
 
-See [AgentRun schema](./architecture/agent-run-schema.md) for the target
-contract.
+See [AgentRun schema](./architecture/agent-run-schema.md) for the contract.
 
 ## Agentic Insurance Tables
 
@@ -99,22 +98,27 @@ Important fields:
 - `created_at`
 - `updated_at`
 
-`packet_json` currently stores failure nodes and audit trail metadata. Risk events stay normalized in `agent_risk_events` so they can be queried by category, severity, owner, and status.
+`packet_json` stores experimental assessment metadata, failure nodes, and audit
+trail metadata. Risk events stay normalized in `agent_risk_events` so they can
+be queried by category, severity, owner, and status.
 
 Evidence packets can now be generated from normalized `AgentRun` evidence.
 Chat traces are projected into AgentRun so both paths use the same risk model.
 
 ## Indexing Notes
 
-The schema indexes conversation timelines, trace status, provider/model, event type, inference log trace IDs, risk event trace IDs, risk category, risk status, and the unique evidence packet per trace.
+The schema indexes conversation timelines, trace status, provider/model, event
+type, inference log trace IDs, risk event trace IDs, risk category, risk status,
+non-null `(run_id, step_id)` pairs, and the unique evidence packet per run or
+trace.
 
 Before high-volume production use, add time-based partitioning for `traces`, `trace_events`, `inference_logs`, and `agent_risk_events`.
 
-## Future Tables
+## Deferred Schema
 
-Expected future table after later milestones:
+One possible future table:
 
 - `agent_authority_scopes` - reusable authority policies for allowed/disallowed actions and required handoff.
 
-Reusable authority policies are intentionally deferred. Milestone 2 stores
+Reusable authority policies are intentionally deferred. v0.1 stores
 authority inline on each `agent_runs` row so the ingest API stays simple.

@@ -143,11 +143,24 @@ export type EvidencePacketResponse = {
   packet: EvidencePacket;
   risk_events: AgentRiskEvent[];
   failure_nodes: FailureNode[];
+  assessment?: {
+    version?: string;
+    status?: "experimental" | string;
+    decision_use?: "review_support_only" | string;
+    not_a_safety_compliance_or_insurance_decision?: boolean;
+    finding_classes?: {
+      policy_findings?: number;
+      evidence_quality_gaps?: number;
+      unevaluated_domains?: string[];
+    };
+    limitations?: string[];
+  };
   audit_trail: {
     policy_pack?: string;
     classifier_version?: string;
     source_trace_events?: number;
     redacted?: boolean;
+    redaction_status?: "applied" | "not_applied" | "unknown" | string;
     [key: string]: unknown;
   };
 };

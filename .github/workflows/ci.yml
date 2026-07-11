@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   api:
     runs-on: ubuntu-latest
@@ -14,8 +17,9 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r apps/api/requirements.txt
-      - run: python -m py_compile apps/api/app/auth.py apps/api/app/db.py apps/api/app/main.py apps/api/app/routes.py apps/api/app/trace_runtime.py apps/api/app/risk_classifier.py apps/api/app/agent_runtime.py apps/api/app/agent_runs.py
-      - run: python -m unittest discover -s apps/api/tests
+      - run: python -m py_compile apps/api/app/auth.py apps/api/app/collector_auth.py apps/api/app/db.py apps/api/app/main.py apps/api/app/routes.py apps/api/app/trace_runtime.py apps/api/app/risk_classifier.py apps/api/app/agent_runtime.py apps/api/app/agent_runs.py
+      - run: python -m unittest discover -s apps/api/tests -v
+      - run: python -m unittest discover -s packages/shared/tests -v
 
   web:
     runs-on: ubuntu-latest
@@ -32,14 +36,20 @@ jobs:
         working-directory: apps/web
       - run: npx eslint
         working-directory: apps/web
+      - run: npm run build
+        working-directory: apps/web
 
   sdk:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["18", "22"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: ${{ matrix.node-version }}
           cache: "npm"
           cache-dependency-path: packages/ollive-js/package-lock.json
       - run: npm ci
@@ -48,3 +58,13 @@ jobs:
         working-directory: packages/ollive-js
       - run: npm run typecheck:examples
         working-directory: packages/ollive-js
+      - run: npm run build
+        working-directory: packages/ollive-js
+      - run: npm run test:package
+        working-directory: packages/ollive-js
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config --quiet

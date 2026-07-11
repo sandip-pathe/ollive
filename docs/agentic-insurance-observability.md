@@ -1,12 +1,16 @@
 # Agentic Insurance Observability
 
-Ollive is aimed at the insurance side of AI-agent adoption. The customer is not only asking "did the model respond fast?" They are asking "can we insure this agent action, and what evidence proves it?"
+Ollive explores the insurance and risk-review side of AI-agent adoption. The
+question is not only "did the model respond fast?" but "what evidence describes
+the action, its authority, its failure modes, and its accountability?" v0.1 does
+not determine whether an agent or action is insurable.
 
 ## Product Wedge
 
 Insurance for agentic AI needs a record of what the agent did, what it knew, where it crossed a boundary, and who is accountable for remediation. Chat is the first agent surface. The same model should later apply to workflow agents, tool-using agents, and background automations.
 
-Milestone 1 names that shared model: `AgentRun`. A chat trace is the first source of `AgentRun` evidence, not the final product boundary.
+That shared model is `AgentRun`. JSON, the TypeScript SDK, and projected chat
+traces all feed it; chat is not the final product boundary.
 
 ## Stakeholders
 
@@ -40,12 +44,12 @@ Insurance and risk reviewers care about:
 
 ## Evidence Packet
 
-The Agent Risk & Insurability Evidence Packet is the core product object.
+The experimental Agent Risk Evidence Packet is the core output.
 
 It contains:
 
 - packet status
-- insurability posture
+- heuristic posture
 - summary
 - risk events
 - severity and confidence
@@ -56,7 +60,10 @@ It contains:
 - audit trail
 - failure nodes
 
-The packet is currently generated from trace evidence. In the target architecture, it is generated from normalized `AgentRun` evidence. It should not claim safety when evidence is incomplete.
+The packet is generated from normalized `AgentRun` evidence, including projected
+chat traces. It separates policy findings from evidence-quality gaps and lists
+unevaluated domains. It must not claim safety, compliance, or insurance validity
+when evidence is incomplete.
 
 ## Current Policy Pack
 
@@ -80,30 +87,30 @@ Generic LLM observability often stops at requests, latency, tokens, cost, errors
 The important shift is:
 
 ```text
-raw telemetry -> trace evidence -> risk event -> insurability posture -> accountable remediation
+raw telemetry -> AgentRun evidence -> risk finding -> heuristic posture -> accountable remediation
 ```
 
 That gives technical teams something to debug and business/risk teams something to evaluate.
 
-The target architecture generalizes this to:
+The AgentRun architecture is:
 
 ```text
 agent run evidence -> risk finding -> evidence packet -> accountable remediation
 ```
 
-## What Is Still Needed
+## Production Gaps
 
 To become production-grade, Ollive needs:
 
-- external SDK ingestion for non-chat agents
-- collector API for normalized AgentRun ingest
 - durable worker-backed packet generation
 - review queues and resolution workflows
 - alerting and thresholds
-- eval suites for classifier quality
+- externally validated and substantially larger eval suites for classifier quality
 - policy pack versioning UI
 - tenant isolation and role-based access
 - retention policy and export controls
-- better test coverage around streaming and recompute
+- signed evidence, migration support, deployment hardening, and security review
 
-The current system is a credible MVP and design-partner demo. It is not yet a production insurance control plane.
+The current system is an experimental reference implementation. It is not a
+production insurance control plane, underwriting model, compliance control, or
+safety system.

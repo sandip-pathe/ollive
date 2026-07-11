@@ -8,6 +8,7 @@ import json
 import os
 from . import db
 from .auth import get_current_user, require_current_user
+from .collector_auth import require_ingest_access
 from .trace_runtime import create_trace, emit_trace_event, finalize_trace, now_ms
 from .risk_classifier import mark_evidence_packet_pending, schedule_evidence_packet
 from packages.shared.redaction import redact_text, redact_preview
@@ -610,7 +611,7 @@ async def metrics_overview():
         }
 
 
-@router.post("/ingest/logs")
+@router.post("/ingest/logs", dependencies=[Depends(require_ingest_access)])
 async def ingest_log(payload: IngestLog):
     async with _get_pool().acquire() as conn:
         row = await conn.fetchrow(

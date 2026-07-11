@@ -1,23 +1,23 @@
 # Agent Risk Layer Architecture
 
-This document describes the target architecture for Ollive as the open-source
-risk layer for AI-agent observability.
+This document describes Ollive's v0.1 AgentRun risk-evidence architecture and
+its longer-term risk-layer thesis.
 
-The current app already captures chat traces and generates evidence packets. The
-target architecture keeps that work, but moves the product boundary from chat
-traces to normalized `AgentRun` evidence.
+The app captures chat traces, accepts JSON and TypeScript SDK AgentRuns, and
+generates evidence packets. The product boundary is normalized `AgentRun`
+evidence rather than chat alone.
 
-## Target Pipeline
+## AgentRun Pipeline
 
 ```text
 customer agent app
-  -> Ollive SDK / adapter / JSON ingest
+  -> Ollive TypeScript SDK / JSON ingest
   -> collector API
   -> AgentRun normalizer
   -> run store
   -> risk engine
   -> evidence packet generator
-  -> dashboard, review queue, export
+  -> dashboard and JSON export
 ```
 
 ## Current Pipeline
@@ -32,8 +32,7 @@ built-in chat UI
   -> inspect UI
 ```
 
-Milestone 1 does not replace the current pipeline. It defines how the current
-pipeline maps into the future one.
+The current chat pipeline projects into AgentRun before run-level evaluation.
 
 ## Component Responsibilities
 
@@ -45,27 +44,26 @@ pipeline maps into the future one.
 | Run store | `agent_runs`, `agent_run_steps`, and `agent_run_sources` implemented | Persist normalized runs, steps, source evidence, and packet linkage. |
 | Risk engine | Implemented as deterministic classifier | Evaluate AgentRun evidence using versioned policy packs. |
 | AI analyzer | Implemented as opt-in V2 hook | Optional BYOK reviewer for subtle risk and intent classification. |
-| Evidence packets | Implemented for traces | Generate run-level audit packet with findings and missing evidence. |
+| Evidence packets | Implemented for traces and AgentRuns | Generate run-level audit packet with findings and missing evidence. |
 | Dashboard | Implemented as run-first Inspect view | Lead with risk posture, evidence completeness, and stakeholder views. |
-| Adapters | Strategy documented | Import from LangSmith, OpenTelemetry, and custom logs. |
+| Adapters | Not implemented | Possible future import from LangSmith, OpenTelemetry, and custom logs. |
 
 ## Source-Agnostic Ingest
 
-Ollive should not assume one agent framework.
+Ollive does not assume one agent framework, but only executable v0.1 sources
+are listed below.
 
 Accepted sources should converge into the same model:
 
 ```text
 Ollive SDK
-LangSmith adapter
-OpenTelemetry adapter
 custom JSON
 built-in chat
   -> AgentRun
 ```
 
-This keeps the risk layer independent. Teams can keep their existing tracing tool
-and still use Ollive for risk posture.
+This keeps the core independent. Existing tracing tools require an adapter that
+the operator writes; v0.1 does not ship one.
 
 ## AgentRun Normalization
 
@@ -98,9 +96,8 @@ AgentRun
   -> EvidencePacket
 ```
 
-The current `apps/api/app/risk_classifier.py` logic should eventually move behind
-this boundary. The first step is to keep its output contract and make its input
-look like an `AgentRun`.
+`apps/api/app/risk_classifier.py` implements this boundary for v0.1. A later
+extraction into a smaller evaluator library is optional future work.
 
 ## Evidence Packet Contract
 
@@ -138,10 +135,10 @@ stakeholder.
 
 Ollive should be independent of LangSmith and similar tools.
 
-Correct posture:
+Long-term posture:
 
-- LangSmith can feed Ollive.
-- OpenTelemetry can feed Ollive.
+- A future LangSmith adapter could feed Ollive.
+- A future OpenTelemetry adapter could feed Ollive.
 - Ollive SDK can feed Ollive directly.
 - Ollive should still work if none of those tools are present.
 
@@ -153,7 +150,7 @@ Incorrect posture:
 
 Ollive's differentiated layer is risk interpretation.
 
-## Milestone 1 Architecture Decision
+## v0.1 Architecture Decision
 
 Keep the existing app and refactor through a strangler path.
 
@@ -171,7 +168,7 @@ generation, risk findings, Docker setup, and inspect UI.
 
 ## Sanity Checks
 
-Milestone 1 is architecturally sound when:
+v0.1 is architecturally sound when:
 
 - every current trace field has a documented AgentRun mapping or a documented gap
 - chat remains a valid first integration

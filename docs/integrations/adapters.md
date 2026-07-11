@@ -1,5 +1,9 @@
 # Adapter Strategy
 
+> Design note only: v0.1 does not ship LangSmith, OpenTelemetry, Vercel, or
+> other vendor adapters. Current executable inputs are JSON ingest, the
+> TypeScript SDK, and projected built-in chat traces.
+
 Ollive should be independent of every observability vendor.
 
 LangSmith, OpenTelemetry, Vercel observability, custom logs, and native SDKs are

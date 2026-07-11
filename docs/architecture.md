@@ -1,8 +1,10 @@
 # System Architecture
 
-Ollive is a monorepo with a Next.js frontend, FastAPI backend, Postgres database, Redis queue, SDK wrapper, and enrichment worker.
+Ollive is an experimental monorepo reference implementation with a Next.js frontend, FastAPI backend, Postgres database, Redis queue, SDK wrapper, and enrichment worker.
 
-The current shipped system is trace-first because chat-as-agent is the first working integration. The target architecture is run-first: every chat trace, SDK event, adapter import, or JSON payload should normalize into an `AgentRun`.
+The current system is run-first for risk evaluation: JSON ingest, the TypeScript
+SDK, and projected chat traces normalize into an `AgentRun`. Vendor-specific
+adapters are design notes only and do not ship in v0.1.
 
 ## Runtime Services
 
@@ -31,11 +33,11 @@ Browser chat UI
   -> inspect UI renders trace detail + packet
 ```
 
-## Target Data Flow
+## AgentRun Data Flow
 
 ```text
 Customer agent app
-  -> Ollive SDK / JSON ingest / observability adapter
+  -> Ollive TypeScript SDK / JSON ingest
   -> collector API
   -> AgentRun normalizer
   -> run store
@@ -44,11 +46,12 @@ Customer agent app
   -> dashboard, review, export
 ```
 
-The current chat path should eventually feed the same normalizer as external agent applications.
+The current chat path projects its trace evidence into the same persisted
+AgentRun model used by external applications.
 
 ## AgentRun Model
 
-`AgentRun` is the canonical future observability unit. It represents one attempt by an AI agent to complete a task. A run can contain user input, model calls, tool calls, retrieval, memory access, policy checks, human handoff, side effects, runtime failures, and final outcome.
+`AgentRun` is the canonical observability unit. It represents one attempt by an AI agent to complete a task. A run can contain user input, model calls, tool calls, retrieval, memory access, policy checks, human handoff, side effects, runtime failures, and final outcome.
 
 See [AgentRun schema](./architecture/agent-run-schema.md).
 
@@ -83,7 +86,7 @@ The trace records:
 
 Trace events add runtime lifecycle detail such as first token, chunks, completion, warning, cancellation, timeout, or error.
 
-In the target architecture, traces are source evidence inside an `AgentRun`. They remain useful and inspectable, but they are not the only ingestion shape.
+Traces are source evidence inside an `AgentRun`. They remain useful and inspectable, but they are not the only ingestion shape.
 
 ## Insurance Evidence Model
 
@@ -93,12 +96,16 @@ The insurance layer extends generic LLM observability with three tables:
 - `agent_risk_events` - risk findings with severity, status, confidence, owner, evidence, and remediation.
 - `evidence_packets` - packet status, insurability posture, summary, audit trail, and failure nodes.
 
-The packet posture can be:
+The packet exposes these heuristic posture labels:
 
 - `insurable` - no material risk found from available trace evidence.
 - `needs_review` - medium/high risk or low-confidence risk needs human review.
 - `blocked` - critical authority or liability risk should block insurability.
 - `unknown` - the packet is pending, errored, or lacks enough evidence.
+
+Every packet also carries machine-readable experimental assessment metadata.
+Posture is review support only and is not a safety, compliance, underwriting, or
+insurance decision.
 
 ## API Surface
 
@@ -125,8 +132,8 @@ Core product endpoints:
 
 Auth endpoints:
 
-- `POST /api/auth/invite`
-- `GET /api/auth/session`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
 - `POST /api/auth/logout`
 
 ## Local Ports
@@ -138,13 +145,18 @@ Auth endpoints:
 
 ## Current Constraints
 
-- Evidence packet generation is currently an API background task, not a durable Redis job.
-- The product observes the built-in chat-as-agent path first; external agent SDK ingestion is a next step.
+- Trace packet generation is an API background task, not a durable Redis job.
+- JSON and first-party TypeScript SDK AgentRun ingestion are shipped.
 - `AgentRun` is persisted through `agent_runs`, `agent_run_steps`, and `agent_run_sources`.
 - The first collector API accepts JSON AgentRun payloads under `/v1`.
-- Native SDKs and third-party adapters are not yet implemented.
-- Local Docker auth bypass is useful for development and must be disabled for shared environments.
-- Raw payload inspection is valuable for proof of work, but production use needs a retention and access-control policy.
+- LangSmith, OpenTelemetry, Python, and other adapters are not implemented.
+- Docker Compose is a local, single-trust-domain reference stack only.
+- One optional collector token is shared across ingest clients; `tenant_id` is
+  metadata, not an authorization boundary.
+- Raw payloads and optional BYOK AI review cross sensitive-data boundaries.
+  Production adaptation requires minimization, retention, access controls, and
+  independent security review.
+- No supported in-place migration path is provided for v0.1.
 
 ## Target Architecture References
 

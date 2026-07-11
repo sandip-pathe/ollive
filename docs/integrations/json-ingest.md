@@ -1,6 +1,6 @@
 # JSON AgentRun Ingest
 
-Milestone 2 adds a source-agnostic JSON collector API for `AgentRun`.
+Ollive v0.1 includes a source-agnostic JSON collector API for `AgentRun`.
 
 The endpoint is intentionally plain HTTP so any backend, script, framework, or
 observability adapter can send runs without using the built-in chat UI.
@@ -13,7 +13,7 @@ shape to the endpoints documented here.
 
 Local development works without a collector token.
 
-For shared or production-like environments, set:
+For a non-local experiment inside one trusted network, set:
 
 ```bash
 OLLIVE_INGEST_TOKEN=replace-with-a-long-random-token
@@ -76,7 +76,9 @@ curl -X POST http://localhost:8001/v1/runs \
   }'
 ```
 
-The response includes the normalized run and the generated evidence packet.
+The response includes the normalized run and generated evidence packet. Every
+packet carries `assessment.status: "experimental"`, review-use boundaries, and
+separate counts for policy findings and evidence-quality gaps.
 
 ## Append Events
 
@@ -98,7 +100,8 @@ curl -X POST http://localhost:8001/v1/runs/run_claim_demo_001/events \
   }'
 ```
 
-Appending events recomputes the packet.
+Appending events recomputes the packet. Reusing a non-null `step_id` updates the
+existing step instead of duplicating it, so a timed-out client can retry safely.
 
 ## Read Packet
 
@@ -125,4 +128,9 @@ Examples of missing evidence that should affect posture:
 - The run-level evidence packet uses the deterministic `agentic_insurance_v1`
   policy pack.
 - Optional BYOK AI analysis is available behind `OLLIVE_AI_ANALYSIS_ENABLED=true`.
-- LangSmith and OpenTelemetry adapters are later milestones.
+- Omitted `evidence.redaction_applied` is reported as unknown, never as applied.
+- Raw source payloads are stored; callers own minimization and retention.
+- The collector token is one shared secret, not tenant-scoped authorization.
+- LangSmith and OpenTelemetry adapters are not implemented in v0.1.
+- Findings are heuristic review support, not safety, compliance, underwriting,
+  or insurance decisions.

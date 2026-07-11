@@ -1,15 +1,22 @@
 # Contributing
 
-Ollive is the open-source risk layer for AI-agent observability.
+Ollive is an experimental reference implementation for risk-oriented AI-agent
+observability. The broader risk-layer category is a product thesis, not a
+production-readiness claim.
 
 The project is designed so contributors can run it locally and ship changes
 without depending on an Ollive-hosted service.
+
+This repository has no support SLA, guaranteed review time, guaranteed fix,
+or commitment to continued maintenance. Contributions may be accepted, changed,
+or left unanswered. Do not include secrets, customer data, or unredacted traces
+in issues or pull requests.
 
 ## Local Setup
 
 ```bash
 cp .env.example .env
-docker compose up -d --build
+docker compose up -d --build --wait
 ```
 
 For frontend-only work:
@@ -42,12 +49,14 @@ npm run dev
 
 ```bash
 python -m unittest discover -s apps/api/tests
+python -m unittest discover -s packages/shared/tests
 ```
 
 ```bash
 cd apps/web
 npx tsc --noEmit --pretty false
 npx eslint
+npm run build
 ```
 
 ```bash
@@ -55,6 +64,11 @@ cd packages/ollive-js
 npm ci
 npm run typecheck
 npm run typecheck:examples
+npm run test:package
+```
+
+```bash
+docker compose config --quiet
 ```
 
 ## Pull Request Expectations
@@ -64,3 +78,11 @@ npm run typecheck:examples
 - Include fixture tests for risk engine changes.
 - Update relevant docs.
 - Keep unrelated files out of the diff.
+
+## Scope Boundary
+
+The local Compose stack is a single-trust-domain development reference. Pull
+requests must not present it as a production deployment profile or treat packet
+posture as a safety, compliance, underwriting, or insurance decision. New
+production claims require corresponding access control, retention, migration,
+security, and validation evidence.

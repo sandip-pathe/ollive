@@ -4,11 +4,10 @@ Date: 2026-05-24
 
 This file records the architecture and implementation choices agreed and locked by the project owner. Any change to these choices requires explicit approval.
 
-Milestone 1 addendum: Ollive's target architecture is now the open-source risk
-layer for AI-agent observability. The current chat trace pipeline remains locked
-as the working MVP path, while future SDKs, adapters, and JSON ingest should
-normalize into the `AgentRun` contract documented in
-`docs/architecture/agent-run-schema.md`.
+v0.1 addendum: `AgentRun` is the canonical risk-evaluation object. JSON ingest,
+the repository-local TypeScript SDK, and projected chat traces normalize into
+the contract documented in `docs/architecture/agent-run-schema.md`. Vendor
+adapters remain unimplemented design notes.
 
 ## Core Choices
 
@@ -47,13 +46,16 @@ normalize into the `AgentRun` contract documented in
 - `GET /api/traces/:trace_id/events/stream` - live trace events.
 - `GET /api/traces/:trace_id/evidence-packet` - agent insurance evidence packet.
 - `POST /api/traces/:trace_id/evidence-packet/recompute` - recompute packet.
+- `POST /v1/runs` - create or replace an AgentRun and packet.
+- `POST /v1/runs/:run_id/events` - append idempotent run steps and recompute.
+- `GET /v1/runs/:run_id/evidence-packet` - read the run packet.
 
 ## UI Scope
 
 - Start, list, resume, pause, and cancel conversations.
 - Inspect runtime traces, metrics, raw payloads, and event timelines.
 - Render chat content as Markdown.
-- Show Agent Risk & Insurability Evidence Packets with posture, risk events, owners, remediations, audit trail, and failure nodes.
+- Show experimental Agent Risk Evidence Packets with posture, risk events, owners, remediations, audit trail, and failure nodes.
 
 ## Operational Notes
 
@@ -61,7 +63,10 @@ normalize into the `AgentRun` contract documented in
 - Ingestion validates and persists `inference_logs` and `extracted_metadata`; enrichment runs through the Redis worker.
 - Logging payload includes provider, model, timestamps, latency, token usage when available, status, redacted previews, session ID, conversation ID, and trace ID.
 - Agentic insurance evidence packets are generated from trace, event, and message evidence. Incomplete runtime evidence must be surfaced as a failure node.
-- Future external agent ingestion must not force all runs through chat concepts. It should map source evidence into `AgentRun`, then generate risk findings and evidence packets from that normalized run.
+- External AgentRun ingestion maps source evidence without forcing it through
+  chat concepts, then generates findings and packets from the normalized run.
+- Packet output is heuristic review support and not a safety, compliance,
+  underwriting, or insurance decision.
 
 ## Locked Status
 

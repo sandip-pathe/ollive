@@ -2,9 +2,9 @@
 
 TypeScript client for sending AI-agent runtime evidence into Ollive.
 
-Ollive is the open-source risk layer for AI-agent observability. This package
-does not require Ollive-hosted infrastructure. It sends normalized `AgentRun`
-payloads to your self-hosted Ollive collector at `/v1/runs`.
+This package instruments Ollive's experimental AgentRun risk-evidence reference
+implementation. It requires no Ollive-hosted infrastructure and sends normalized
+`AgentRun` payloads to your collector at `/v1/runs`.
 
 ## Install
 
@@ -14,11 +14,8 @@ From this repo:
 npm install ./packages/ollive-js
 ```
 
-After npm publishing:
-
-```bash
-npm install @ollive/risk-layer
-```
+`@ollive/risk-layer` is not published to npm as part of v0.1. The package name
+and metadata reserve a reproducible future publish path.
 
 ## Minimal Use
 
@@ -53,11 +50,13 @@ await run.modelCall({
   output: { text: "I can explain the review process, but cannot approve it." },
 });
 
-await run.end({
+const result = await run.end({
   status: "success",
   summary: "Answered with process guidance only.",
   side_effects: [],
 });
+
+console.log(result.evidence_packet);
 ```
 
 ## Fire-And-Forget Delivery
@@ -89,3 +88,13 @@ Configure `onDeliveryError` if you want to log failed delivery locally.
 Ollive treats missing authority, missing steps, missing tool results, missing
 handoff, runtime failures, and unsafe side effects as risk evidence instead of
 silently treating unknowns as safe.
+
+## Boundaries
+
+- Node 18 or newer is required.
+- Delivery is to one self-hosted collector and optional shared ingest token;
+  this is not tenant-scoped authorization.
+- Inputs and outputs can contain sensitive data. Minimize or redact evidence
+  before delivery.
+- Packet posture is experimental heuristic review support, not a safety,
+  compliance, underwriting, or insurance decision.

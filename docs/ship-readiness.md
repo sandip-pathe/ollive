@@ -1,154 +1,92 @@
 # Ship Readiness
 
-This document tracks the current push-ready state for the agentic insurance observability work and the Milestone 1 OSS risk-layer reframe.
+## v0.1 Status
 
-## Current Status
+Ollive v0.1 is an experimental, single-trust-domain reference implementation
+for turning Ollive-formatted AgentRuns into risk evidence packets.
 
-Ollive can be described as an agentic insurance observability MVP for chat-as-agent workflows.
+Shipped:
 
-It has:
+- JSON AgentRun collector and first-party TypeScript SDK
+- persisted runs, ordered steps, source references, findings, and packets
+- deterministic `agentic_insurance_v1` policy evaluation
+- optional BYOK AI findings constrained to review-only provenance
+- machine-readable experimental assessment and evidence-quality gaps
+- existing chat-as-agent path and run-first Inspect dashboard
+- local Docker Compose reference stack with schema bootstrap and health gates
+- reproducible SDK tarball checks, API/shared tests, web build, and CI matrix
+- MIT license, security/support boundaries, changelog, and release checklist
 
-- live chat traces
-- trace events and raw payload inspection
-- metrics overview
-- Markdown chat rendering
-- local auth bypass for development
-- Docker Compose web/API/database/Redis/worker stack
-- policy rules for agentic insurance risk
-- persisted risk events
-- persisted evidence packets
-- recompute endpoint and UI action
-- evidence packet UI with posture, risk events, audit trail, and failure nodes
-- run-first risk posture dashboard with AgentRun summaries and packet JSON export
-- normalized `AgentRun` tables
-- JSON `/v1/runs` collector API
-- run-level evidence packet generation
-- first-party TypeScript SDK in `packages/ollive-js`
-- V2 deterministic risk engine with optional BYOK AI review
-- self-hosting, adapter, policy-pack, contributing, CI, and release checklist docs
+## Accurate Claim
 
-Milestone 1 added the product and architecture contract for the next version:
+> Ollive is an experimental open-source reference implementation that turns
+> Ollive-formatted AgentRuns into risk evidence packets.
 
-- Ollive's target claim is "the open-source risk layer for AI-agent observability."
-- `AgentRun` is the canonical future product object.
-- current chat traces are documented as the first AgentRun evidence source.
-- LangSmith, OpenTelemetry, custom logs, JSON ingest, and native SDKs are positioned as optional inputs.
+The phrase `open-source risk layer for AI-agent observability` describes the
+project thesis. It is not a current maturity, adoption, or category-leadership
+claim.
 
-Milestone 2 adds JSON ingest. Milestone 3 adds the first-party TypeScript SDK.
-Third-party adapters are still pending.
+Do not claim that Ollive:
 
-## Claim Boundary
+- is a production LangSmith, OpenTelemetry, or observability replacement
+- ships LangSmith, OpenTelemetry, Python, or framework adapters
+- has externally validated or calibrated policy findings
+- determines safety, compliance, insurability, underwriting, or coverage
+- provides tenant isolation, production retention, or hardened deployment
+- offers a support SLA, guaranteed maintenance, or hosted service
 
-Safe claim:
+## Release Gate
 
-> Ollive is an agentic insurance observability tool that turns AI chat-agent traces into risk and insurability evidence packets.
-
-Strategic direction:
-
-> Ollive is the open-source risk layer for AI-agent observability.
-
-Do not claim yet:
-
-> Ollive is a production LangSmith replacement.
-
-Also do not claim yet:
-
-> Ollive has a published, production-hardened external agent SDK ecosystem.
-
-> Ollive has production-ready LangSmith or OpenTelemetry adapters.
-
-The current system is suitable for demo, design partner feedback, and proof-of-work. Production needs the blockers below resolved.
-
-## Production Blockers
-
-- Published SDK package, retries, and broader framework adapters.
-- LangSmith and OpenTelemetry adapters.
-- First-party Python SDK.
-- Durable queue for evidence packet generation and recompute jobs.
-- Multi-tenant auth, access control, and audit logs.
-- Retention and redaction policy for raw payloads.
-- Alerts, thresholds, and review queues.
-- Larger classifier eval suite and human review workflow.
-- CI coverage for API and frontend.
-- Deployment hardening with bypass disabled.
-
-## Known Local Repo State
-
-- The local branch is `main`.
-- The branch is aligned with `origin/main` before the Milestone 1 doc changes.
-- `linkedin-content/` is untracked and unrelated to this ship set.
-- The Milestone 2 change set adds AgentRun persistence, `/v1` JSON ingest, and documentation.
-
-Before pushing from this machine, confirm no unrelated files are staged.
-
-## Verification Commands
-
-API syntax:
+The source tag is ready only when all of these pass:
 
 ```bash
-python -m py_compile apps/api/app/auth.py apps/api/app/db.py apps/api/app/routes.py apps/api/app/trace_runtime.py apps/api/app/risk_classifier.py
+python -m py_compile apps/api/app/auth.py apps/api/app/collector_auth.py apps/api/app/db.py apps/api/app/main.py apps/api/app/routes.py apps/api/app/trace_runtime.py apps/api/app/risk_classifier.py apps/api/app/agent_runtime.py apps/api/app/agent_runs.py
+python -m unittest discover -s apps/api/tests -v
+python -m unittest discover -s packages/shared/tests -v
 ```
-
-Web types:
 
 ```bash
 cd apps/web
+npm ci
 npx tsc --noEmit --pretty false
-```
-
-Web lint:
-
-```bash
-cd apps/web
 npx eslint
+npm run build
 ```
 
-Repo whitespace:
+```bash
+cd packages/ollive-js
+npm ci
+npm run typecheck
+npm run typecheck:examples
+npm run build
+npm run test:package
+```
 
 ```bash
+docker compose config --quiet
+python scripts/smoke_reference_stack.py
 git diff --check
 ```
 
-Runtime smoke:
+The smoke script must use a fresh isolated volume, create one run, fetch the
+same packet, expose experimental status, and clean up. Docker unavailability is
+the only acceptable unverified environment condition and must be reported.
 
-```bash
-docker compose ps
-```
+## Production Gaps
 
-```bash
-Invoke-WebRequest http://localhost:3000
-```
+- Tenant-scoped identity, authorization, and audit controls
+- TLS, secret management, restricted networking, hardened images, and backups
+- Data minimization, retention enforcement, deletion workflows, and privacy review
+- Durable queueing, retries, alerts, review workflows, and operational runbooks
+- Versioned database migrations and supported rollback/upgrade procedures
+- Signed evidence, calibrated scoring, larger policy corpus, and external review
+- Vendor/framework adapters and independently verified integration examples
 
-```bash
-Invoke-WebRequest http://localhost:8001/health
-```
+These are future project decisions, not unfinished v0.1 promises.
 
-## Suggested Commit Scope
+## Maintenance Position
 
-For Milestone 2, include:
-
-- `README.md`
-- `.env.example`
-- `docker-compose.yml`
-- `apps/api/app/agent_runtime.py`
-- `apps/api/app/agent_runs.py`
-- `apps/api/app/db.py`
-- `apps/api/app/main.py`
-- `apps/api/app/risk_classifier.py`
-- `apps/api/tests/test_agent_run_risk.py`
-- `docs/ARCHITECTURE_LOCK.md`
-- `docs/agentic-insurance-observability.md`
-- `docs/architecture.md`
-- `docs/architecture/agent-risk-layer.md`
-- `docs/architecture/agent-run-schema.md`
-- `docs/integrations/json-ingest.md`
-- `docs/product/oss-risk-layer.md`
-- `docs/roadmap/oss-milestones.md`
-- `docs/schema.md`
-- `docs/ship-readiness.md`
-- `docs/tradeoffs.md`
-- `packages/database/schema.sql`
-
-Exclude:
-
-- `linkedin-content/`
+Issues and pull requests may be opened, but no response, fix, release, or
+continued-maintenance timeline is guaranteed. After v0.1, feature work should
+resume only when an external user demonstrates a concrete integration or packet
+need.

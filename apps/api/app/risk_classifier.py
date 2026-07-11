@@ -12,7 +12,22 @@ from . import db
 
 POLICY_PACK = "agentic_insurance_v1"
 CLASSIFIER_VERSION = "risk-classifier-v2"
+ASSESSMENT_VERSION = "ollive-assessment-v0.1"
 RISK_PACKET_QUEUE = "risk_packet_queue"
+
+EVIDENCE_GAP_TITLES = {
+    "Authority scope missing",
+    "No agent steps captured",
+    "Model or action evidence missing",
+    "Required escalation appears missing",
+}
+UNEVALUATED_DOMAINS = [
+    "legal or regulatory compliance",
+    "actuarial insurability",
+    "policy-pack completeness",
+    "real-world outcome safety",
+    "tenant and identity integrity",
+]
 
 RULES = [
     {
@@ -173,6 +188,46 @@ def _loads_json(value: Any) -> Any:
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
     return dict(row) if row else {}
+
+
+def _is_evidence_gap(event: dict[str, Any]) -> bool:
+    if str(event.get("title") or "") in EVIDENCE_GAP_TITLES:
+        return True
+    if event.get("risk_category") != "workflow_failure_node":
+        return False
+    reason = str(event.get("reason") or "").lower()
+    return any(marker in reason for marker in ("missing", "no runtime events", "incomplete"))
+
+
+def _assessment_metadata(risk_events: list[dict[str, Any]]) -> dict[str, Any]:
+    evidence_gaps = sum(1 for event in risk_events if _is_evidence_gap(event))
+    return {
+        "version": ASSESSMENT_VERSION,
+        "status": "experimental",
+        "decision_use": "review_support_only",
+        "not_a_safety_compliance_or_insurance_decision": True,
+        "finding_classes": {
+            "policy_findings": max(0, len(risk_events) - evidence_gaps),
+            "evidence_quality_gaps": evidence_gaps,
+            "unevaluated_domains": UNEVALUATED_DOMAINS,
+        },
+        "limitations": [
+            "Findings are heuristic and are not calibrated probabilities.",
+            f"Coverage is limited to the {POLICY_PACK} policy pack and optional review-only AI findings.",
+            "The assessment can only evaluate evidence supplied with the run.",
+            "Redaction provenance does not guarantee that stored source payloads are redacted.",
+            "The packet schema and policy corpus have not been externally validated.",
+        ],
+    }
+
+
+def _redaction_provenance(evidence: dict[str, Any]) -> dict[str, Any]:
+    value = evidence.get("redaction_applied")
+    if value is True:
+        return {"redacted": True, "redaction_status": "applied"}
+    if value is False:
+        return {"redacted": False, "redaction_status": "not_applied"}
+    return {"redacted": False, "redaction_status": "unknown"}
 
 
 def _contains_any(text: str, terms: list[str]) -> str | None:
@@ -661,7 +716,13 @@ async def mark_evidence_packet_pending(conn, trace_id: UUID) -> None:
         """,
         trace_id,
         trace["conversation_id"],
-        json.dumps({"policy_pack": POLICY_PACK, "classifier_version": CLASSIFIER_VERSION}),
+        json.dumps(
+            {
+                "assessment": _assessment_metadata([]),
+                "policy_pack": POLICY_PACK,
+                "classifier_version": CLASSIFIER_VERSION,
+            }
+        ),
     )
 
 
@@ -1000,18 +1061,22 @@ async def generate_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
     posture = _terminal_posture(trace, risk_events, "ready")
     summary = _packet_summary(posture, risk_events, failure_nodes)
     packet_json = {
+        "assessment": _assessment_metadata(risk_events),
         "failure_nodes": failure_nodes,
         "audit_trail": {
             "policy_pack": POLICY_PACK,
             "classifier_version": CLASSIFIER_VERSION,
             "source_trace_events": len(events),
             "redacted": True,
+            "redaction_status": "applied",
+            "redaction_scope": "packet_previews_only",
             "llm_classifier": ai_status.get("status", "disabled"),
             "ai_analyzer": ai_status,
         },
     }
 
     async with conn.transaction():
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", f"ollive:trace-packet:{trace_id}")
         await conn.execute("DELETE FROM agent_risk_events WHERE trace_id=$1", trace_id)
         rule_rows = await conn.fetch("SELECT id, rule_key FROM agent_policy_rules WHERE policy_pack=$1", POLICY_PACK)
         rule_ids = {row["rule_key"]: row["id"] for row in rule_rows}
@@ -1083,14 +1148,16 @@ async def generate_agent_run_evidence_packet(conn, run_id: str) -> dict[str, Any
     trace_like, events = _project_run_to_trace(run)
     posture = _terminal_posture(trace_like, risk_events, "ready")
     summary = _packet_summary(posture, risk_events, failure_nodes)
+    redaction_provenance = _redaction_provenance(run.get("evidence") or {})
     packet_json = {
+        "assessment": _assessment_metadata(risk_events),
         "failure_nodes": failure_nodes,
         "audit_trail": {
             "policy_pack": POLICY_PACK,
             "classifier_version": CLASSIFIER_VERSION,
             "source_trace_events": len(events),
             "source_agent_steps": len(run.get("steps") or []),
-            "redacted": bool((run.get("evidence") or {}).get("redaction_applied", True)),
+            **redaction_provenance,
             "llm_classifier": ai_status.get("status", "disabled"),
             "ai_analyzer": ai_status,
             "run_source": run.get("source"),
@@ -1098,6 +1165,7 @@ async def generate_agent_run_evidence_packet(conn, run_id: str) -> dict[str, Any
     }
 
     async with conn.transaction():
+        await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", f"ollive:run-packet:{run_id}")
         await conn.execute("DELETE FROM agent_risk_events WHERE run_id=$1", run_id)
         rule_rows = await conn.fetch("SELECT id, rule_key FROM agent_policy_rules WHERE policy_pack=$1", POLICY_PACK)
         rule_ids = {row["rule_key"]: row["id"] for row in rule_rows}
@@ -1175,7 +1243,14 @@ async def mark_evidence_packet_error(conn, trace_id: UUID, message: str) -> None
         trace_id,
         trace["conversation_id"],
         message[:500],
-        json.dumps({"error": message[:500], "policy_pack": POLICY_PACK, "classifier_version": CLASSIFIER_VERSION}),
+        json.dumps(
+            {
+                "assessment": _assessment_metadata([]),
+                "error": message[:500],
+                "policy_pack": POLICY_PACK,
+                "classifier_version": CLASSIFIER_VERSION,
+            }
+        ),
     )
 
 
@@ -1255,16 +1330,20 @@ async def get_evidence_packet(conn, trace_id: UUID) -> dict[str, Any]:
 
     audit_trail = packet_json.get("audit_trail") if isinstance(packet_json, dict) else None
     failure_nodes = packet_json.get("failure_nodes") if isinstance(packet_json, dict) else None
+    assessment = packet_json.get("assessment") if isinstance(packet_json, dict) else None
     return {
         "packet": packet_dict,
         "risk_events": risk_events,
         "failure_nodes": failure_nodes or [],
+        "assessment": assessment or _assessment_metadata(risk_events),
         "audit_trail": audit_trail
         or {
             "policy_pack": POLICY_PACK,
             "classifier_version": CLASSIFIER_VERSION,
             "source_trace_events": 0,
             "redacted": True,
+            "redaction_status": "applied",
+            "redaction_scope": "packet_previews_only",
         },
     }
 
@@ -1298,7 +1377,13 @@ async def get_agent_run_evidence_packet(conn, run_id: str) -> dict[str, Any]:
             run["trace_id"],
             run_id,
             run["conversation_id"],
-            json.dumps({"policy_pack": POLICY_PACK, "classifier_version": CLASSIFIER_VERSION}),
+            json.dumps(
+                {
+                    "assessment": _assessment_metadata([]),
+                    "policy_pack": POLICY_PACK,
+                    "classifier_version": CLASSIFIER_VERSION,
+                }
+            ),
         )
         return await generate_agent_run_evidence_packet(conn, run_id)
 
@@ -1333,15 +1418,18 @@ async def get_agent_run_evidence_packet(conn, run_id: str) -> dict[str, Any]:
         risk_events.append(event)
     audit_trail = packet_json.get("audit_trail") if isinstance(packet_json, dict) else None
     failure_nodes = packet_json.get("failure_nodes") if isinstance(packet_json, dict) else None
+    assessment = packet_json.get("assessment") if isinstance(packet_json, dict) else None
     return {
         "packet": packet_dict,
         "risk_events": risk_events,
         "failure_nodes": failure_nodes or [],
+        "assessment": assessment or _assessment_metadata(risk_events),
         "audit_trail": audit_trail
         or {
             "policy_pack": POLICY_PACK,
             "classifier_version": CLASSIFIER_VERSION,
             "source_agent_steps": 0,
-            "redacted": True,
+            "redacted": False,
+            "redaction_status": "unknown",
         },
     }

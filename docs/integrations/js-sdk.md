@@ -1,10 +1,10 @@
 # JavaScript SDK Integration
 
-Milestone 3 adds `packages/ollive-js`, the first official SDK for sending
-runtime evidence into Ollive.
+Ollive v0.1 includes `packages/ollive-js`, the first-party TypeScript SDK for
+sending runtime evidence into Ollive.
 
 The SDK is intentionally thin. It normalizes agent activity into `AgentRun`
-payloads and sends them to the self-hosted Ollive collector. It does not require
+payloads and sends them to your Ollive collector. It does not require
 LangSmith, Vercel, OpenTelemetry, or any hosted Ollive service.
 
 ## Install
@@ -15,11 +15,8 @@ From a local checkout:
 npm install ./packages/ollive-js
 ```
 
-Future npm package:
-
-```bash
-npm install @ollive/risk-layer
-```
+The package is not published to npm in v0.1. CI packs and installs the tarball
+on Node 18 and 22 so a future publish is reproducible.
 
 ## One-Line Client
 
@@ -38,7 +35,7 @@ const ollive = createOlliveClient({
 const run = await ollive.startRun({
   agent: {
     name: "claims-support-agent",
-    environment: "production",
+    environment: "local",
   },
   task: {
     type: "claim_question",
@@ -58,11 +55,13 @@ await run.modelCall({
   output: { text: "I can explain the review process, but cannot approve it." },
 });
 
-await run.end({
+const result = await run.end({
   status: "success",
   summary: "Answered with process guidance only.",
   side_effects: [],
 });
+
+console.log(result.evidence_packet);
 ```
 
 ## Record Risk-Relevant Evidence
@@ -138,4 +137,13 @@ The SDK gives Ollive enough evidence to generate risk findings around:
 - unsupported or overconfident claims
 
 The developer does not need to model these risk categories by hand. The SDK only
-captures what happened; Ollive's risk layer interprets it.
+captures what happened; Ollive's experimental classifier interprets it.
+
+## Boundaries
+
+- Node 18 or newer is supported by the package contract.
+- A repeated non-null `step_id` is idempotent at the v0.1 collector.
+- The optional ingest token is shared collector access, not tenant authorization.
+- The collector persists source evidence; minimize and redact sensitive values.
+- Packet posture is heuristic review support, not a safety, compliance,
+  underwriting, or insurance decision.

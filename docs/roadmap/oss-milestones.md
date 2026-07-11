@@ -1,7 +1,8 @@
-# Ollive OSS Risk Layer Milestones
+# Ollive v0.1 Implementation Record
 
-This roadmap converts Ollive from a chat-as-agent observability MVP into the
-open-source risk layer for AI-agent observability.
+This document records the six implementation milestones that produced the v0.1
+experimental AgentRun risk-evidence reference. It is historical execution
+context, not a promise of future maintenance or production readiness.
 
 The implementation strategy is a strangler refactor. Keep the current app
 working, introduce the new `AgentRun` core, and migrate features onto it without
@@ -84,10 +85,10 @@ Manual review:
 
 ## Milestone 3: JavaScript SDK
 
-Status: implemented as local package in `packages/ollive-js`.
+Status: complete in commit `a4afa32` as a repository-local package.
 
-Goal: make first integration fast enough that a developer gets a packet in under
-five minutes.
+Goal: make first integration direct enough that a developer can generate a
+packet from the repository without a hosted service.
 
 Deliverables:
 
@@ -104,7 +105,7 @@ Sanity checks:
 - no AI API key is required for deterministic risk packets
 - one example app produces a packet locally
 - TypeScript types match the documented AgentRun schema
-- first packet can be generated in under five minutes from README steps
+- README provides one canonical packet-first path
 
 Verification:
 
@@ -126,7 +127,7 @@ Manual review:
 
 ## Milestone 4: Risk Engine V2 And Optional AI Analysis
 
-Status: implemented in `risk-classifier-v2`.
+Status: complete in commit `050d69d` as `risk-classifier-v2`.
 
 Goal: move from trace-specific rule code to a run-level risk engine with optional
 BYOK AI analysis.
@@ -166,7 +167,7 @@ Manual review:
 
 ## Milestone 5: Dashboard Reframe Around Risk Posture
 
-Status: implemented in the Inspect dashboard.
+Status: complete in commit `15f7370` in the Inspect dashboard.
 
 Goal: make the UI feel like risk observability for agents, not generic trace
 inspection.
@@ -209,18 +210,17 @@ Manual review:
 
 ## Milestone 6: OSS Distribution And Adapter Layer
 
-Status: implemented as docs, CI, and release checklist.
+Status: complete in commit `7833024`, with release-integrity closeout in v0.1.0.
 
 Goal: make Ollive useful without Sandip, without a hosted Ollive service, and
 without requiring any one observability vendor.
 
 Deliverables:
 
-- self-host Docker path documented and tested
+- local/reference Docker path documented and tested
 - JS SDK package release path
-- Python SDK plan or first cut
-- LangSmith importer or callback adapter
-- OpenTelemetry adapter plan or first cut
+- explicit documentation that Python, LangSmith, and OpenTelemetry adapters do
+  not ship in v0.1
 - policy-pack authoring guide
 - contribution guide
 - release checklist
@@ -230,7 +230,7 @@ Sanity checks:
 - fresh machine setup works from README
 - no hidden dependency on Ollive cloud
 - external sample repo generates packets
-- adapter input normalizes to the same AgentRun model
+- JSON and TypeScript SDK input normalize to the same AgentRun model
 - claim boundary remains accurate
 
 Verification:
@@ -249,7 +249,7 @@ Manual review:
 
 - follow README as a new user
 - generate one packet through SDK path
-- generate one packet through adapter or JSON path
+- generate one packet through the JSON path
 - export evidence packet
 
 ## Release Gate After Every Milestone
